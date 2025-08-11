@@ -107,3 +107,8 @@ def get_rate_asof(engine: Engine, base_ccy: str, quote_ccy: str, asof: datetime)
         raise LookupError(f"No FX rate for {base_ccy}/{quote_ccy} as of {asof_utc.isoformat()}")
 
     return FxRate(ts=_utc_dt(row.ts), base_ccy=row.base_ccy, quote_ccy=row.quote_ccy, rate=float(row.rate))
+
+
+def create_engine(path: str = ":memory:") -> Engine:
+    from sqlalchemy import create_engine as sa_create_engine
+    return sa_create_engine(f"sqlite+pysqlite:///{path}", future=True)

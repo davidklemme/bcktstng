@@ -114,7 +114,7 @@ epics:
 
   - id: E2
     title: Engine Core (Events, Clock, Portfolio, Execution, Risk)
-    status: planned
+    status: done
     description: Deterministic event-driven simulator with multi-currency portfolio and realistic costs.
     acceptance_criteria:
       - "Deterministic event ordering."
@@ -124,72 +124,72 @@ epics:
     features:
       - id: E2-F1
         title: Events & Clock
-        status: planned
+        status: done
         tasks:
-          - id: T101
-            title: Event types & priority queue
-            status: planned
+                      - id: T101
+              title: Event types & priority queue
+              status: done
             estimate: "0.75d"
             depends_on: [T007]
             acceptance_criteria:
               - "Bar/FX/CorpAction/Clock ordering test passes."
           - id: T102
             title: Deterministic clock (UTC, exchange-aware)
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T101, T004]
             acceptance_criteria:
               - "No time travel; mixed feeds tested."
       - id: E2-F2
         title: Portfolio (Multi-Currency)
-        status: planned
+        status: done
         tasks:
-          - id: T103
-            title: Positions, cash per CCY, EUR valuation
-            status: planned
+                      - id: T103
+              title: Positions, cash per CCY, EUR valuation
+              status: done
             estimate: "1.5d"
             depends_on: [T005]
             acceptance_criteria:
               - "Realized/unrealized P&L correct across corp actions."
       - id: E2-F3
         title: Orders & Execution
-        status: planned
+        status: done
         tasks:
-          - id: T104
-            title: Order state machine (NEW→WORKING→FILLED/CANCELED)
-            status: planned
+                      - id: T104
+              title: Order state machine (NEW→WORKING→FILLED/CANCELED)
+              status: done
             estimate: "0.75d"
             depends_on: [T101]
             acceptance_criteria:
               - "IOC/FOK/Day lifecycle tests."
-          - id: T105
-            title: Execution simulator v1 (spread+liquidity)
-            status: planned
+                      - id: T105
+              title: Execution simulator v1 (spread+liquidity)
+              status: done
             estimate: "1.0d"
             depends_on: [T104, T006]
             acceptance_criteria:
               - "Fills within [bid, ask]; partials under ADV cap."
-          - id: T106
-            title: Commission & fees plugin (US/EU)
-            status: planned
+                      - id: T106
+              title: Commission & fees plugin (US/EU)
+              status: done
             estimate: "0.5d"
             depends_on: [T008]
             acceptance_criteria:
               - "Venue overrides applied; regression tests."
-          - id: T107
-            title: Market impact (square-root)
-            status: planned
+                      - id: T107
+              title: Market impact (square-root)
+              status: done
             estimate: "0.5d"
             depends_on: [T105]
             acceptance_criteria:
               - "Impact scales with sqrt(qty/ADV); unit tests."
       - id: E2-F4
         title: Risk Limits
-        status: planned
+        status: done
         tasks:
-          - id: T108
-            title: Gross/net, per-symbol, leverage caps
-            status: planned
+                      - id: T108
+              title: Gross/net, per-symbol, leverage caps
+              status: done
             estimate: "0.75d"
             depends_on: [T103]
             acceptance_criteria:
