@@ -13,7 +13,7 @@ roadmap:
 epics:
   - id: E1
     title: Data Foundation (US+EU, FX, Calendars)
-    status: planned
+    status: done
     description: Point-in-time, survivorship-bias-free data with corporate actions, FX, and exchange calendars.
     acceptance_criteria:
       - "Schemas defined in PyArrow and documented."
@@ -24,22 +24,22 @@ epics:
     features:
       - id: E1-F1
         title: Arrow/Parquet Schemas
-        status: planned
+        status: done
         tasks:
           - id: T001
             title: Define schemas (bars, fx, corp_actions, symbols)
-            status: planned
+            status: done
             estimate: "0.5d"
             acceptance_criteria:
               - "Python constants in /data/schemas."
               - "Unit test instantiates each schema."
       - id: E1-F2
         title: Symbol Master + PIT
-        status: planned
+        status: done
         tasks:
           - id: T002
             title: Loader (CSV→Postgres) and PIT SELECTs
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T001]
             acceptance_criteria:
@@ -47,11 +47,11 @@ epics:
               - "Tests cover survivorship bias with delistings."
       - id: E1-F3
         title: Corporate Actions
-        status: planned
+        status: done
         tasks:
           - id: T003
             title: Loader (CSV→Parquet) and adjusters
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T002]
             acceptance_criteria:
@@ -59,21 +59,21 @@ epics:
               - "Dividend cashflow reflected on ex-date."
       - id: E1-F4
         title: Exchange Calendars (US+EU)
-        status: planned
+        status: done
         tasks:
           - id: T004
             title: Calendar module (is_open/next_open/next_close)
-            status: planned
+            status: done
             estimate: "1.0d"
             acceptance_criteria:
               - "NYSE closed July 4; XETR half-day Dec 24 test passes."
       - id: E1-F5
         title: FX Rates (EUR base)
-        status: planned
+        status: done
         tasks:
           - id: T005
             title: FX ingestion (daily+minute) and PIT reader
-            status: planned
+            status: done
             estimate: "0.75d"
             depends_on: [T001]
             acceptance_criteria:
@@ -81,33 +81,33 @@ epics:
               - "Weekend queries return last available."
       - id: E1-F6
         title: Bars Ingestion (Daily, US+EU)
-        status: planned
+        status: done
         tasks:
           - id: T006
             title: CSV→Parquet loader with validation
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T001, T004]
             acceptance_criteria:
               - "UTC-normalized closes; gaps/NaNs flagged."
       - id: E1-F7
         title: PIT Data Reader API
-        status: planned
+        status: done
         tasks:
           - id: T007
             title: get_bars/get_fx with no-peek guard
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T002, T003, T006]
             acceptance_criteria:
               - "Access beyond asof raises error; tests included."
       - id: E1-F8
         title: Region-Aware Cost Profiles
-        status: planned
+        status: done
         tasks:
           - id: T008
             title: YAML cost profiles per venue (US/EU)
-            status: planned
+            status: done
             estimate: "0.5d"
             acceptance_criteria:
               - "US per-share+SEC/TAF; EU bps; UK stamp duty toggle."
