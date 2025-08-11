@@ -24,3 +24,11 @@ def apply_actions(price: float, qty: float, actions: Iterable[CorporateAction]) 
         # Dividends do not change price immediately here (price adjustment depends on data vendor convention)
         # For P&L, dividend appears as separate cashflow handled elsewhere; we don't alter qty for dividends
     return PriceQty(price=round(adj_price, 10), qty=round(adj_qty, 10))
+
+
+def dividend_cashflow_on_exdate(shares: float, actions: Iterable[CorporateAction]) -> float:
+    total = 0.0
+    for a in actions:
+        if a.dividend and a.dividend != 0.0:
+            total += shares * a.dividend
+    return round(total, 10)

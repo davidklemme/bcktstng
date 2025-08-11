@@ -1,0 +1,13 @@
+US:
+  type: per_share_plus_fees
+  commission_per_share: 0.005
+  sec_fee_bps: 0.221  # applies to sells only, in basis points
+  taf_per_share: 0.000145  # applies to sells only
+EU:
+  type: bps
+  commission_bps: 0.5
+UK:
+  type: bps_with_stamp
+  commission_bps: 0.5
+  stamp_duty_bps: 50  # 0.5% stamp duty on buys
+  stamp_enabled: true

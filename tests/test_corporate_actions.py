@@ -17,7 +17,7 @@ from quant.data.corp_actions_repository import (
     get_actions_for_symbol,
     CorporateAction,
 )
-from quant.data.adjusters import apply_actions
+from quant.data.adjusters import apply_actions, dividend_cashflow_on_exdate
 
 
 CSV_HEADER = "symbol_id,effective_date,split_ratio,dividend,currency\n"
@@ -72,3 +72,7 @@ def test_dividend_cashflow_record_present() -> None:
     a = actions[0]
     assert a.dividend == pytest.approx(0.5)
     assert a.currency == "USD"
+
+    # Cashflow on ex-date for 100 shares should be 50 USD
+    cash = dividend_cashflow_on_exdate(100, actions)
+    assert cash == pytest.approx(50.0)

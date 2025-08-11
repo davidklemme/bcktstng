@@ -35,15 +35,19 @@ def test_fx_ingestion_and_weekend_handling() -> None:
 2024-05-31T00:00:00Z,USD,EUR,0.92
 2024-06-01T00:00:00Z,USD,EUR,0.921
 2024-06-03T00:00:00Z,USD,EUR,0.93
+2024-06-01T00:00:00Z,GBP,EUR,1.17
+2024-06-01T00:00:00Z,CHF,EUR,1.02
 """.strip()
     )
     n = load_fx_csv_to_db(csv_path, engine)
-    assert n == 3
+    assert n == 5
 
-    # Query on weekend date (2024-06-02 is Sunday): should return last available (2024-06-01)
+    # USD/EUR weekend
     rate = get_rate_asof(engine, "USD", "EUR", _dt("2024-06-02T12:00:00Z"))
     assert rate.rate == pytest.approx(0.921)
 
-    # Query on Monday after weekend
-    rate2 = get_rate_asof(engine, "USD", "EUR", _dt("2024-06-03T12:00:00Z"))
-    assert rate2.rate == pytest.approx(0.93)
+    # GBP/EUR and CHF/EUR present
+    gbp = get_rate_asof(engine, "GBP", "EUR", _dt("2024-06-02T12:00:00Z"))
+    chf = get_rate_asof(engine, "CHF", "EUR", _dt("2024-06-02T12:00:00Z"))
+    assert gbp.rate == pytest.approx(1.17)
+    assert chf.rate == pytest.approx(1.02)
