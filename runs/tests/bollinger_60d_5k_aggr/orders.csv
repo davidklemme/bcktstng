@@ -1,0 +1,5 @@
+ts,order_id,symbol_id,side,quantity,type,tif,limit_price,state
+2024-01-29T21:00:00Z,bb_flatten,1,BUY,50,MKT,DAY,,NEW
+2024-01-30T21:00:00Z,bb_long,1,BUY,50,MKT,DAY,,NEW
+2024-02-08T21:00:00Z,bb_flatten,1,SELL,50,MKT,DAY,,NEW
+2024-02-09T21:00:00Z,bb_short,1,SELL,50,MKT,DAY,,NEW
