@@ -166,7 +166,7 @@ def run_backtest(
             quote = _quote_from_bar(bar_for_symbol)
             venue = venue_by_symbol.get(order.symbol_id, "UNKNOWN")
             available_liquidity = max(int(bar_for_symbol.volume), order.quantity)
-            fills, cost_total = exec_sim.simulate(order, quote, venue, available_liquidity)
+            fills, cost_total = exec_sim.simulate(order, quote, venue, available_liquidity, ts=ts)
 
             # Apply fills to portfolio
             sym_meta = symbols_by_id.get(order.symbol_id)
