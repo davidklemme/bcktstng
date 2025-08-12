@@ -240,7 +240,7 @@ epics:
 
   - id: E4
     title: Orchestration & Service (CLI, HTTP, cron)
-    status: planned
+    status: done
     description: Expose backtests and signals via CLI and FastAPI; cron-aligned EOD runs.
     acceptance_criteria:
       - "CLI for backtest/signal/data ingest."
@@ -249,44 +249,44 @@ epics:
     features:
       - id: E4-F1
         title: CLI
-        status: planned
+        status: done
         tasks:
           - id: T302
             title: Commands: run backtest|signal, data ingest
-            status: planned
+            status: done
             estimate: "0.75d"
             depends_on: [T201, T301]
             acceptance_criteria:
               - "Exit codes + help texts."
       - id: E4-F2
         title: FastAPI Service
-        status: planned
+        status: done
         tasks:
           - id: T303
             title: /health, /backtest, /signal (pydantic models)
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T201, T301]
             acceptance_criteria:
               - "JSON logs; schema-validated requests."
       - id: E4-F3
         title: Containerization & Config
-        status: planned
+        status: done
         tasks:
           - id: T304
             title: Dockerfile/compose + pydantic config + .env
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T303]
             acceptance_criteria:
               - "Service runs locally via docker-compose."
       - id: E4-F4
         title: Cron Runners
-        status: planned
+        status: done
         tasks:
           - id: T305
             title: Exchange-close cron scripts with offsets
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T303, T004]
             acceptance_criteria:
@@ -463,11 +463,11 @@ epics:
     features:
       - id: E9-F1
         title: Artifacts & Manifest
-        status: planned
+        status: done
         tasks:
           - id: T301
             title: Write equity/orders/fills/metrics + run_manifest
-            status: planned
+            status: done
             estimate: "0.75d"
             acceptance_criteria:
               - "Hash of params and git SHA stored."
