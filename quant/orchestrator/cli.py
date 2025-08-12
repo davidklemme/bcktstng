@@ -16,6 +16,8 @@ from .config import get_settings
 from ..examples.ma_cross import MACross
 from ..research.validation import make_walk_forward_folds, make_purged_kfold_folds, run_walk_forward
 from ..research.search import run_hyperparameter_search
+from ..strategies.simple.bollinger import BollingerBands
+from ..strategies.simple.roc import RateOfChange
 
 app = typer.Typer(help="Quant orchestration CLI")
 
@@ -28,6 +30,25 @@ def _strategy_factory(name: str):
                 symbol=params.get("symbol", params.get("strategy_symbol", "AAPL")),
                 fast=int(params.get("fast", 10)),
                 slow=int(params.get("slow", 30)),
+            )
+        return factory
+    if lname == "bollinger":
+        def factory(params: dict):
+            return BollingerBands(
+                symbol=params.get("symbol", params.get("strategy_symbol", "AAPL")),
+                window=int(params.get("window", 20)),
+                num_std=float(params.get("num_std", 2.0)),
+                position_size=int(params.get("position_size", 100)),
+            )
+        return factory
+    if lname == "roc":
+        def factory(params: dict):
+            return RateOfChange(
+                symbol=params.get("symbol", params.get("strategy_symbol", "AAPL")),
+                window=int(params.get("window", 10)),
+                upper=float(params.get("upper", 0.02)),
+                lower=float(params.get("lower", -0.02)),
+                position_size=int(params.get("position_size", 100)),
             )
         return factory
     raise ValueError(f"Unknown strategy: {name}")
@@ -81,6 +102,10 @@ def run_backtest_cmd(
     # Strategy
     if strategy_name.lower() == "ma_cross":
         strat = MACross(symbol=strategy_symbol)
+    elif strategy_name.lower() == "bollinger":
+        strat = BollingerBands(symbol=strategy_symbol)
+    elif strategy_name.lower() == "roc":
+        strat = RateOfChange(symbol=strategy_symbol)
     else:
         typer.echo(f"Unknown strategy: {strategy_name}")
         raise typer.Exit(code=2)
