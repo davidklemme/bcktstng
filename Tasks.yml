@@ -197,7 +197,7 @@ epics:
 
   - id: E3
     title: Strategy SDK & Features
-    status: planned
+    status: done
     description: Python SDK for writing strategies with context, data access, order APIs, and core indicators.
     acceptance_criteria:
       - "Strategy base class with ctx methods."
@@ -206,33 +206,33 @@ epics:
     features:
       - id: E3-F1
         title: Strategy Base & Context
-        status: planned
+        status: done
         tasks:
-          - id: T201
-            title: Implement base & ctx (data/order/portfolio/risk/log)
-            status: planned
+                      - id: T201
+              title: Implement base & ctx (data/order/portfolio/risk/log)
+              status: done
             estimate: "1.0d"
             depends_on: [T101, T103, T105]
             acceptance_criteria:
               - "Mock strategy receives expected events."
       - id: E3-F2
         title: Feature Library v1
-        status: planned
+        status: done
         tasks:
-          - id: T202
-            title: MA, zscore, rolling vol, ATR, vol-target
-            status: planned
+                      - id: T202
+              title: MA, zscore, rolling vol, ATR, vol-target
+              status: done
             estimate: "0.75d"
             depends_on: [T201]
             acceptance_criteria:
               - "Vectorized; unit tests pass."
       - id: E3-F3
         title: Example Strategies
-        status: planned
+        status: done
         tasks:
-          - id: T203
-            title: MA cross and vol-targeted carry
-            status: planned
+                      - id: T203
+              title: MA cross and vol-targeted carry
+              status: done
             estimate: "0.75d"
             depends_on: [T202]
             acceptance_criteria:
