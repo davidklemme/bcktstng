@@ -17,6 +17,7 @@ from ..engine.execution import ExecutionSimulator, Quote
 from ..engine.portfolio import Portfolio
 from ..engine.orders import Order
 from ..ops.artifacts import ArtifactWriter, compute_params_hash, get_git_sha
+from ..ops.metrics import events_total, queue_lag_seconds, fill_slippage_bps, orders_total, fills_total, backtest_step_duration_seconds
 
 
 DEFAULT_SPREAD_BPS = 5.0  # simple default spread if not otherwise provided
@@ -149,6 +150,14 @@ def run_backtest(
 
     for ts in times:
         ctx.now = ts
+
+        # Metrics: one step processed
+        events_total.labels(source="backtest").inc()
+
+        # Optionally track wall time of the step
+        import time as _time
+        _t0 = _time.perf_counter()
+
         if hasattr(strategy, "on_event"):
             strategy.on_event(None, ctx)
 
@@ -157,6 +166,7 @@ def run_backtest(
         ctx.order_api._orders.clear()
 
         for order in pending:
+            orders_total.inc()
             # Find bar for this symbol at ts
             bar_rows = bars_at_time.get(ts, [])
             bar_for_symbol: Optional[BarRow] = next((b for b in bar_rows if b.symbol_id == order.symbol_id), None)
@@ -172,8 +182,14 @@ def run_backtest(
             sym_meta = symbols_by_id.get(order.symbol_id)
             currency = sym_meta.currency if sym_meta else base_currency
             for f in fills:
+                fills_total.inc()
                 side = order.side.value
                 portfolio.apply_fill(order.symbol_id, currency, side, f.quantity, f.price)
+                # Slippage vs mid in bps
+                mid = (quote.bid + quote.ask) / 2.0
+                if mid > 0:
+                    bps = abs((f.price - mid) / mid) * 10000.0
+                    fill_slippage_bps.observe(bps)
                 fills_out.append(
                     {
                         "ts": ts,
@@ -220,6 +236,10 @@ def run_backtest(
                     "average_price": pos.average_price,
                 }
             )
+
+        # End of step metrics
+        queue_lag_seconds.set(0.0)
+        backtest_step_duration_seconds.observe(_time.perf_counter() - _t0)
 
     if hasattr(strategy, "on_end"):
         strategy.on_end(ctx)

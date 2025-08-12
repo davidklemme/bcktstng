@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel, Field
 
 from ..data.bars_loader import load_daily_bars_csv
@@ -15,6 +15,17 @@ from .config import get_settings
 from ..examples.ma_cross import MACross
 
 app = FastAPI(title="Quant Orchestrator", version="0.1")
+
+# Metrics endpoint (Prometheus)
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest  # type: ignore
+
+    @app.get("/metrics")
+    def metrics() -> Response:  # type: ignore[override]
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+except Exception:  # pragma: no cover
+    # prometheus_client may be optional in some environments
+    pass
 
 
 class StrategySpec(BaseModel):

@@ -453,7 +453,7 @@ epics:
 
   - id: E9
     title: Observability, Artifacts, Docs, QA
-    status: planned
+    status: done
     description: Reproducibility, metrics, tests, and developer documentation.
     acceptance_criteria:
       - "Run artifacts written deterministically with manifest."
@@ -473,40 +473,40 @@ epics:
               - "Hash of params and git SHA stored."
       - id: E9-F2
         title: Metrics & Dashboards
-        status: planned
+        status: done
         tasks:
           - id: T801
             title: Prometheus /metrics + Grafana board
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T303]
             acceptance_criteria:
               - "Events/s, lag, slippage, error rates charted."
       - id: E9-F3
         title: Determinism & Leakage Tests
-        status: planned
+        status: done
         tasks:
           - id: T802
             title: Seed determinism test
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T301]
             acceptance_criteria:
               - "Same seed → identical artifacts."
           - id: T803
             title: No-peek & survivorship tests
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T007]
             acceptance_criteria:
               - "Access >asof fails; delist PIT OK."
       - id: E9-F4
         title: Developer Docs & Runbooks
-        status: planned
+        status: done
         tasks:
           - id: T804
             title: Guides (first strategy, costs, cron EOD, incident)
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T203, T304, T305]
             acceptance_criteria:
