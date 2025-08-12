@@ -368,7 +368,7 @@ epics:
 
   - id: E7
     title: Minute Bars & EU Specifics
-    status: planned
+    status: done
     description: Add minute-level data and refine slippage for intraday realities.
     acceptance_criteria:
       - "Minute bars session-aligned with DST."
@@ -376,22 +376,22 @@ epics:
     features:
       - id: E7-F1
         title: Minute Bars Ingestion (US+EU)
-        status: planned
+        status: done
         tasks:
           - id: T601
             title: Loader with session alignment and memory notes
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T004, T006]
             acceptance_criteria:
               - "Out-of-session data excluded; tests pass."
       - id: E7-F2
         title: Slippage v2 (Time-of-Day)
-        status: planned
+        status: done
         tasks:
           - id: T602
             title: Open/close spread widening + TOD buckets
-            status: planned
+            status: done
             estimate: "0.75d"
             depends_on: [T601, T105]
             acceptance_criteria:

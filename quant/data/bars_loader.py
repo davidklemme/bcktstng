@@ -128,6 +128,86 @@ def load_daily_bars_csv(csv_path: str, exchange: str) -> Tuple[List[BarRow], Val
     return rows, ValidationResult(missing_dates=missing_dates, nan_row_indices=nan_row_indices)
 
 
+# Minute bars ingestion with session alignment (DST-aware via exchange timezone)
+# Expected columns: ts_local (YYYY-MM-DD HH:MM), symbol_id, open, high, low, close, volume
+# Rows outside of the regular session (per exchange calendar) are excluded.
+# If a column named "ts" is present with timezone-aware ISO8601, it will be treated as absolute and converted to UTC.
+
+def load_minute_bars_csv(csv_path: str, exchange: str) -> Tuple[List[BarRow], ValidationResult]:
+    rows: List[BarRow] = []
+    nan_row_indices: List[int] = []
+    tz = EXCHANGE_TZ.get(exchange)
+    if tz is None:
+        raise ValueError(f"Unsupported exchange: {exchange}")
+
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        fields = set(reader.fieldnames or [])
+        if "ts_local" in fields:
+            required = {"ts_local", "symbol_id", "open", "high", "low", "close", "volume"}
+        elif "ts" in fields:
+            required = {"ts", "symbol_id", "open", "high", "low", "close", "volume"}
+        else:
+            raise ValueError("CSV must contain either 'ts_local' or 'ts' column")
+        missing = required - fields
+        if missing:
+            raise ValueError(f"CSV missing required columns: {missing}")
+
+        for idx, r in enumerate(reader):
+            # Parse timestamp
+            if "ts_local" in r and r["ts_local"]:
+                # Interpret as local exchange time without timezone and convert to UTC
+                local_naive = datetime.fromisoformat(r["ts_local"])  # e.g., 2024-01-02 09:31
+                if local_naive.tzinfo is None:
+                    local_dt = local_naive.replace(tzinfo=tz)
+                else:
+                    # If tz-aware, trust it and convert to exchange tz first
+                    local_dt = local_naive.astimezone(tz)
+                ts_utc = local_dt.astimezone(timezone.utc)
+            else:
+                # Use absolute timestamp in 'ts'
+                ts_abs = datetime.fromisoformat(r["ts"])  # should be ISO; may be naive -> assume UTC
+                if ts_abs.tzinfo is None:
+                    ts_abs = ts_abs.replace(tzinfo=timezone.utc)
+                ts_utc = ts_abs.astimezone(timezone.utc)
+                # Also derive local for session check
+                local_dt = ts_utc.astimezone(tz)
+
+            # Session filter (exclude out-of-session minutes)
+            if not is_open(exchange, local_dt):
+                continue
+
+            parsed_open = _parse_float(r["open"])
+            parsed_high = _parse_float(r["high"])
+            parsed_low = _parse_float(r["low"])
+            parsed_close = _parse_float(r["close"])
+            parsed_volume = _parse_int(r["volume"])
+
+            if (
+                parsed_open is None
+                or parsed_high is None
+                or parsed_low is None
+                or parsed_close is None
+                or parsed_volume is None
+            ):
+                nan_row_indices.append(idx)
+
+            rows.append(
+                BarRow(
+                    ts=ts_utc,
+                    symbol_id=int(r["symbol_id"]),
+                    open=float(parsed_open) if parsed_open is not None else float("nan"),
+                    high=float(parsed_high) if parsed_high is not None else float("nan"),
+                    low=float(parsed_low) if parsed_low is not None else float("nan"),
+                    close=float(parsed_close) if parsed_close is not None else float("nan"),
+                    volume=int(parsed_volume) if parsed_volume is not None else 0,
+                    dt=local_dt.date(),
+                )
+            )
+
+    return rows, ValidationResult(missing_dates=[], nan_row_indices=nan_row_indices)
+
+
 def write_parquet(path: str, rows: List[BarRow]) -> None:
     # Optional: requires pyarrow at runtime
     try:

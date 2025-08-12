@@ -44,3 +44,31 @@ def test_normalizes_to_utc_close_and_flags_gaps_and_nans() -> None:
 
     # One NaN row (missing open) at index 3 in input
     assert 3 in validation.nan_row_indices
+
+
+def test_minute_bars_excludes_out_of_session_and_converts_to_utc() -> None:
+    # XNYS: local open 09:30, close 16:00. Provide rows at 09:15 (OOS), 09:30 (in), 16:05 (OOS)
+    header = "ts_local,symbol_id,open,high,low,close,volume\n"
+    contents = """
+2024-06-03 09:15,1,10,10.1,9.9,10.05,100
+2024-06-03 09:30,1,10.05,10.2,10.0,10.1,200
+2024-06-03 16:05,1,10.1,10.1,10.0,10.05,50
+""".strip()
+
+    tmpdir = tempfile.mkdtemp()
+    path = os.path.join(tmpdir, "minute.csv")
+    with open(path, "w", newline="") as f:
+        f.write(header)
+        f.write(contents)
+
+    from quant.data.bars_loader import load_minute_bars_csv
+
+    rows, validation = load_minute_bars_csv(path, exchange="XNYS")
+    # Expect only the 09:30 row included
+    assert len(rows) == 1
+    r = rows[0]
+    assert r.symbol_id == 1
+    # Ensure UTC timezone
+    assert r.ts.tzinfo is not None and r.ts.tzinfo.utcoffset(r.ts) == timezone.utc.utcoffset(r.ts)
+    # Validation currently tracks only NaNs for minutes; should be empty here
+    assert validation.nan_row_indices == []

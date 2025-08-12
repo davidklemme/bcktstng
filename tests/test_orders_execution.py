@@ -59,3 +59,40 @@ def test_market_impact_direction():
     order_sell = Order(id="s", symbol_id=1, side=OrderSide.SELL, quantity=1000, type=OrderType.MARKET, tif=TimeInForce.DAY)
     fills_s, _ = sim.simulate(order_sell, quote, venue="US", available_liquidity=5000)
     assert fills_s[0].price <= quote.mid
+
+
+def test_time_of_day_spread_multiplier_open_close_mid():
+    sim = ExecutionSimulator(adv_by_symbol={1: 100000}, adv_cap_fraction=1.0, impact_alpha=0.0, sigma_by_symbol={1: 0.0}, tod_spread_multipliers={"OPEN": 2.0, "MID": 1.0, "CLOSE": 1.5})
+    quote = Quote(bid=100.0, ask=100.2)  # spread = 0.2
+
+    from datetime import datetime, timezone
+
+    # US venue at open bucket (approx 09:30 local NYC). Use a UTC time corresponding to 09:30 EDT on 2024-06-03 -> 13:30 UTC
+    ts_open = datetime(2024, 6, 3, 13, 30, tzinfo=timezone.utc)
+    # Market BUY: with higher multiplier, price should be pushed further above mid but still within [bid, ask]
+    order_buy = Order(id="b1", symbol_id=1, side=OrderSide.BUY, quantity=100, type=OrderType.MARKET, tif=TimeInForce.DAY)
+    fills_open, _ = sim.simulate(order_buy, quote, venue="US", available_liquidity=10000, ts=ts_open)
+
+    # Mid=100.1; urgency 0.75; effective spread=0.2*2.0=0.4; target = 100.1 + 0.75*0.4 = 100.4 -> clamped to ask=100.2
+    assert fills_open[0].price <= quote.ask and fills_open[0].price >= quote.mid
+
+    # Mid-session (e.g., 18:00 UTC ~ 14:00 local). Expect less aggressive than open
+    ts_mid = datetime(2024, 6, 3, 18, 0, tzinfo=timezone.utc)
+    order_buy2 = Order(id="b2", symbol_id=1, side=OrderSide.BUY, quantity=100, type=OrderType.MARKET, tif=TimeInForce.DAY)
+    fills_mid, _ = sim.simulate(order_buy2, quote, venue="US", available_liquidity=10000, ts=ts_mid)
+    # With mid multiplier 1.0: effective price at 100.1+0.75*0.2=100.25 -> clamped to 100.2
+    assert fills_mid[0].price <= fills_open[0].price
+
+    # Close bucket ~ 20:30 UTC (16:30 local close -> still in close bucket minute)
+    ts_close = datetime(2024, 6, 3, 20, 30, tzinfo=timezone.utc)
+    order_buy3 = Order(id="b3", symbol_id=1, side=OrderSide.BUY, quantity=100, type=OrderType.MARKET, tif=TimeInForce.DAY)
+    fills_close, _ = sim.simulate(order_buy3, quote, venue="US", available_liquidity=10000, ts=ts_close)
+    assert fills_close[0].price >= fills_mid[0].price
+
+
+def test_simulate_backward_compat_signature_without_ts():
+    sim = ExecutionSimulator()
+    quote = Quote(bid=50.0, ask=50.1)
+    order = Order(id="x", symbol_id=1, side=OrderSide.SELL, quantity=10, type=OrderType.MARKET, tif=TimeInForce.IOC)
+    fills, cost = sim.simulate(order, quote, venue="US", available_liquidity=100)
+    assert fills and cost >= 0.0
