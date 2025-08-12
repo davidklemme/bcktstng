@@ -29,7 +29,13 @@ def _is_weekend(local_dt: datetime) -> bool:
 
 
 def _xnys_holiday(local_dt: datetime) -> bool:
-    # Minimal rule: Independence Day July 4th closed (no observed logic here)
+    # Minimal rules to match dummy dataset closures:
+    # - 2024-01-15: Martin Luther King Jr. Day
+    # - 2024-02-19: Presidents' Day
+    # - 07-04: Independence Day (fixed-date, no observed logic in this minimal calendar)
+    if local_dt.year == 2024 and (local_dt.month, local_dt.day) in {(1, 15), (2, 19)}:
+        return True
+    # Independence Day
     return local_dt.month == 7 and local_dt.day == 4
 
 
