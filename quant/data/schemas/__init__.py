@@ -3,6 +3,7 @@ from .bars import BARS_SCHEMA
 from .fx import FX_RATES_SCHEMA
 from .corp_actions import CORPORATE_ACTIONS_SCHEMA
 from .symbols import SYMBOLS_SCHEMA
+from .options import OPTIONS_SCHEMA
 
 __all__ = [
     "Schema",
@@ -15,4 +16,5 @@ __all__ = [
     "FX_RATES_SCHEMA",
     "CORPORATE_ACTIONS_SCHEMA",
     "SYMBOLS_SCHEMA",
+    "OPTIONS_SCHEMA",
 ]
