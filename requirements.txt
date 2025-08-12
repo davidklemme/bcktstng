@@ -7,3 +7,5 @@ typer>=0.9,<1
 pydantic>=2,<3
 pydantic-settings>=2,<3
 python-dotenv>=1,<2
+prometheus-client>=0.20,<1
+requests>=2,<3
