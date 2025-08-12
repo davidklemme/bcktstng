@@ -337,7 +337,7 @@ epics:
 
   - id: E6
     title: Research & Validation (Walk-Forward, Hyperparam)
-    status: planned
+    status: done
     description: Leakage-safe validation and multiprocessing hyperparameter search.
     acceptance_criteria:
       - "Walk-forward & purged k-fold implemented."
@@ -345,22 +345,22 @@ epics:
     features:
       - id: E6-F1
         title: Walk-Forward & Purged K-Fold
-        status: planned
+        status: done
         tasks:
           - id: T501
             title: API with per-fold artifacts and leakage guards
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T302]
             acceptance_criteria:
               - "No overlap; artifacts per fold saved."
       - id: E6-F2
         title: Hyperparameter Search (MP)
-        status: planned
+        status: done
         tasks:
           - id: T502
             title: Grid/random search; leaderboard.csv
-            status: planned
+            status: done
             estimate: "0.75d"
             depends_on: [T501]
             acceptance_criteria:
