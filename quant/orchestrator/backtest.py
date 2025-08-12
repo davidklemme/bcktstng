@@ -94,6 +94,7 @@ def run_backtest(
     seed: Optional[int] = None,
     out_dir: Optional[str | Path] = None,
     logger: Optional[logging.Logger] = None,
+    starting_cash: float = 0.0,
 ) -> BacktestResult:
     start = _to_utc(start)
     end = _to_utc(end)
@@ -111,6 +112,8 @@ def run_backtest(
 
     # Portfolio
     portfolio = Portfolio(base_currency=base_currency)
+    if starting_cash and starting_cash != 0.0:
+        portfolio.deposit(float(starting_cash), base_currency)
 
     # Prepare context
     order_api = strategy.order_api if hasattr(strategy, "order_api") else None
@@ -277,6 +280,7 @@ def run_backtest(
                 "base_currency": base_currency,
                 "costs_yaml_path": costs_yaml_path,
                 "seed": seed,
+                "starting_cash": starting_cash,
             }
         ),
         "params": {
@@ -286,6 +290,7 @@ def run_backtest(
             "base_currency": base_currency,
             "costs_yaml_path": costs_yaml_path,
             "seed": seed,
+            "starting_cash": starting_cash,
         },
     }
     writer.write_manifest(manifest)

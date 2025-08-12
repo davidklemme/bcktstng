@@ -1,0 +1,5 @@
+ts,order_id,symbol_id,price,quantity,venue,cost
+2024-01-29T21:00:00Z,bb_flatten,1,116.029,50,XNYS,0.0
+2024-01-30T21:00:00Z,bb_long,1,115.02875,50,XNYS,0.0
+2024-02-08T21:00:00Z,bb_flatten,1,109.9725,50,XNYS,0.0
+2024-02-09T21:00:00Z,bb_short,1,110.97225,50,XNYS,0.0
