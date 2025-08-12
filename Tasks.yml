@@ -294,7 +294,7 @@ epics:
 
   - id: E5
     title: Paper & Live Execution Abstractions
-    status: planned
+    status: done
     description: Unified execution layer so strategies run unchanged in backtest, paper, or live.
     acceptance_criteria:
       - "Paper broker with same slippage/fees path."
@@ -303,33 +303,33 @@ epics:
     features:
       - id: E5-F1
         title: Paper Broker
-        status: planned
+        status: done
         tasks:
           - id: T401
             title: In-memory order book, partial fills, cancel/replace
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T105, T106]
             acceptance_criteria:
               - "Tick-size compliance US/EU; tests pass."
       - id: E5-F2
         title: Execution Provider Interface
-        status: planned
+        status: done
         tasks:
           - id: T402
             title: submit/cancel/status with unified errors
-            status: planned
+            status: done
             estimate: "0.5d"
             depends_on: [T401]
             acceptance_criteria:
               - "Mock adapter integration test."
       - id: E5-F3
         title: IBKR Adapter (skeleton)
-        status: planned
+        status: done
         tasks:
           - id: T403
             title: Auth, clock sync, dry-run guard (paper-only)
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T402]
             acceptance_criteria:
