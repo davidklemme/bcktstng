@@ -18,7 +18,7 @@ def _ensure_dir(path: str | Path) -> Path:
 
 
 def compute_params_hash(params: Dict[str, Any]) -> str:
-    payload = json.dumps(params, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload = json.dumps(params, sort_keys=True, separators=(",", ":"), default=_json_default).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
