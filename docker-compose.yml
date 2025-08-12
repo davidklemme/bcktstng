@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  service:
+    build: .
+    image: quant-orchestrator:latest
+    env_file:
+      - .env
+    environment:
+      - UVICORN_PORT=8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+      - ./runs:/workspace/runs
+      - ./data:/data
+    command: ["uvicorn", "quant.orchestrator.service:app", "--host", "0.0.0.0", "--port", "8000"]
