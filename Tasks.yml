@@ -399,7 +399,7 @@ epics:
 
   - id: E8
     title: Options (Phase 1, US Large-Cap/Index)
-    status: planned
+    status: done
     description: Limited options support with chains, IV, greeks, and early exercise.
     acceptance_criteria:
       - "Option chains ingested with IV present/derived."
@@ -408,44 +408,44 @@ epics:
     features:
       - id: E8-F1
         title: Options Data Schema + IV
-        status: planned
+        status: done
         tasks:
           - id: T701
             title: Chain schema + BS IV if missing
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T001]
             acceptance_criteria:
               - "Parquet schema and IV tests."
       - id: E8-F2
         title: Greeks & Valuation Cache
-        status: planned
+        status: done
         tasks:
           - id: T702
             title: BS greeks with carry and div yields
-            status: planned
+            status: done
             estimate: "1.0d"
             depends_on: [T701]
             acceptance_criteria:
               - "Greeks match reference within tolerance."
       - id: E8-F3
         title: Assignment / Early Exercise
-        status: planned
+        status: done
         tasks:
           - id: T703
             title: Early ITM calls pre-div + assignment prob
-            status: planned
+            status: done
             estimate: "0.75d"
             depends_on: [T702, T003]
             acceptance_criteria:
               - "Backtests reflect early exercise cases."
       - id: E8-F4
         title: Options Strategy Helpers
-        status: planned
+        status: done
         tasks:
           - id: T704
             title: Covered call, vertical; roll rules
-            status: planned
+            status: done
             estimate: "0.75d"
             depends_on: [T702]
             acceptance_criteria:
