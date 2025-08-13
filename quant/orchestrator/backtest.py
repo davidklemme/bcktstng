@@ -193,6 +193,8 @@ def run_backtest(
                 if mid > 0:
                     bps = abs((f.price - mid) / mid) * 10000.0
                     fill_slippage_bps.observe(bps)
+                # Calculate cost per fill (proportional to fill quantity)
+                cost_per_fill = (cost_total / sum(f.quantity for f in fills)) * f.quantity if fills else 0.0
                 fills_out.append(
                     {
                         "ts": ts,
@@ -201,7 +203,7 @@ def run_backtest(
                         "price": f.price,
                         "quantity": f.quantity,
                         "venue": venue,
-                        "cost": 0.0,  # cost recorded per order; not per fill here
+                        "cost": cost_per_fill,
                     }
                 )
             if cost_total and cost_total != 0.0:

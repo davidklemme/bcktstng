@@ -19,6 +19,7 @@ from ..research.validation import make_walk_forward_folds, make_purged_kfold_fol
 from ..research.search import run_hyperparameter_search
 from ..strategies.simple.bollinger import BollingerBands
 from ..strategies.simple.roc import RateOfChange
+from ..data.stooq_data_fetcher import StooqDataFetcher
 
 app = typer.Typer(help="Quant orchestration CLI")
 
@@ -97,6 +98,7 @@ def run_backtest_cmd(
     fx_db: Optional[Path] = typer.Option(None, help="SQLite FX DB path"),
     costs_yaml: Optional[Path] = typer.Option(None, help="Costs profile YAML path"),
     out_dir: Optional[Path] = typer.Option(None, help="Output directory for artifacts"),
+    starting_cash: float = typer.Option(100000.0, help="Starting cash in base currency"),
 ):
     settings = get_settings()
     start_dt = datetime.fromisoformat(start)
@@ -137,6 +139,7 @@ def run_backtest_cmd(
         end=end_dt,
         costs_yaml_path=str(costs_yaml or settings.cost_profiles_path),
         out_dir=str(out_dir or Path(settings.runs_dir) / "cli"),
+        starting_cash=starting_cash,
     )
 
     typer.echo(f"Backtest completed. Run ID: {result.run_id}")
@@ -478,6 +481,222 @@ def update_symbols(
     # Save updated symbols
     fetcher.save_symbols_to_csv(new_symbols, symbols_csv)
     typer.echo(f"\nUpdated {symbols_csv} with {len(new_symbols)} symbols")
+
+
+@app.command("fetch-stooq-data")
+def fetch_stooq_data(
+    symbols_csv: Path = typer.Option(Path("quant/data/comprehensive_symbols.csv"), help="Path to symbols CSV"),
+    output_path: Path = typer.Option(Path("quant/data/bars_from_stooq.csv"), help="Output CSV path for bars data"),
+    symbols_db: Optional[Path] = typer.Option(Path("data/symbols.db"), help="Path to symbols database"),
+    symbol: Optional[str] = typer.Option(None, help="Fetch data for specific symbol only"),
+    exchange: Optional[str] = typer.Option(None, help="Exchange code for specific symbol"),
+    start_date: Optional[str] = typer.Option(None, help="Start date (YYYY-MM-DD), defaults to 1 year ago"),
+    end_date: Optional[str] = typer.Option(None, help="End date (YYYY-MM-DD), defaults to today"),
+    delay: float = typer.Option(1.0, help="Delay between requests in seconds"),
+    force_refresh: bool = typer.Option(False, help="Force refresh all data (ignore existing)"),
+    dry_run: bool = typer.Option(False, help="Show what would be fetched without saving"),
+    verbose: bool = typer.Option(False, help="Enable verbose logging with per-symbol details"),
+):
+    """Fetch historical data from Stooq for symbols."""
+    from datetime import datetime, timedelta, timezone
+    import logging
+    
+    # Configure logging level based on verbose flag
+    if verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    # Initialize fetcher with symbols database
+    fetcher = StooqDataFetcher(delay_seconds=delay, symbols_db_path=str(symbols_db) if symbols_db.exists() else None)
+    
+    # Parse dates
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    else:
+        start_dt = datetime.now(timezone.utc) - timedelta(days=365)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    else:
+        end_dt = datetime.now(timezone.utc)
+    
+    typer.echo(f"Fetching data from {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}")
+    
+    if symbol and exchange:
+        # Fetch data for specific symbol
+        typer.echo(f"Fetching data for {symbol} ({exchange})")
+        
+        if dry_run:
+            typer.echo(f"DRY RUN - Would fetch data for {symbol} from Stooq")
+            return
+        
+        if force_refresh:
+            data_points = fetcher.fetch_symbol_data(symbol, exchange, start_dt, end_dt)
+        else:
+            data_points = fetcher.fetch_missing_data(symbol, exchange, output_path, start_dt, end_dt)
+        
+        if data_points:
+            # Get symbol ID if available
+            symbol_id = fetcher.get_symbol_id(symbol, exchange, datetime.now(timezone.utc))
+            fetcher.save_data_to_csv(data_points, symbol, exchange, output_path, symbol_id)
+            typer.echo(f"Saved {len(data_points)} data points for {symbol}")
+        else:
+            typer.echo(f"No data found for {symbol}")
+    
+    else:
+        # Fetch data for all symbols in CSV
+        if not symbols_csv.exists():
+            typer.echo(f"Symbols file {symbols_csv} does not exist")
+            raise typer.Exit(code=1)
+        
+        symbols = fetcher.load_symbols_from_csv(symbols_csv)
+        
+        if not symbols:
+            typer.echo("No symbols found in CSV file")
+            raise typer.Exit(code=1)
+        
+        typer.echo(f"Found {len(symbols)} symbols to process")
+        
+        if dry_run:
+            typer.echo("DRY RUN - Would fetch data for the following symbols:")
+            for ticker, exch in symbols[:10]:  # Show first 10
+                typer.echo(f"  {ticker} ({exch})")
+            if len(symbols) > 10:
+                typer.echo(f"  ... and {len(symbols) - 10} more")
+            return
+        
+        # Show existing data summary
+        summary = fetcher.get_data_summary(output_path)
+        if summary:
+            typer.echo(f"\nExisting data summary:")
+            for sym, info in list(summary.items())[:5]:  # Show first 5
+                typer.echo(f"  {sym}: {info['data_points']} points ({info['first_date']} to {info['last_date']})")
+            if len(summary) > 5:
+                typer.echo(f"  ... and {len(summary) - 5} more symbols")
+        
+        # Fetch data
+        results = fetcher.fetch_symbols_data(symbols, output_path, start_dt, end_dt, force_refresh)
+        
+        # Show results
+        typer.echo(f"\nFetch results:")
+        total_points = 0
+        for sym, count in results.items():
+            if count > 0:
+                typer.echo(f"  {sym}: {count} data points")
+                total_points += count
+        
+        typer.echo(f"\nTotal: {total_points} data points saved to {output_path}")
+
+
+@app.command("stooq-data-summary")
+def stooq_data_summary(
+    data_path: Path = typer.Option(Path("quant/data/stooq_data.csv"), help="Path to Stooq data CSV"),
+):
+    """Show summary of existing Stooq data."""
+    fetcher = StooqDataFetcher()
+    
+    if not data_path.exists():
+        typer.echo(f"Data file {data_path} does not exist")
+        raise typer.Exit(code=1)
+    
+    summary = fetcher.get_data_summary(data_path)
+    
+    if not summary:
+        typer.echo("No data found in file")
+        return
+    
+    typer.echo(f"Data summary for {data_path}:")
+    typer.echo("-" * 80)
+    
+    # Sort by number of data points
+    sorted_summary = sorted(summary.items(), key=lambda x: x[1]['data_points'], reverse=True)
+    
+    for symbol, info in sorted_summary:
+        first_date = info['first_date'].strftime('%Y-%m-%d') if info['first_date'] else 'N/A'
+        last_date = info['last_date'].strftime('%Y-%m-%d') if info['last_date'] else 'N/A'
+        
+        typer.echo(f"{symbol:<10} | {info['exchange']:<8} | {info['data_points']:>6} points | {first_date} to {last_date}")
+
+
+@app.command("check-missing-data")
+def check_missing_data(
+    symbols_csv: Path = typer.Option(Path("quant/data/comprehensive_symbols.csv"), help="Path to symbols CSV"),
+    data_path: Path = typer.Option(Path("quant/data/stooq_data.csv"), help="Path to Stooq data CSV"),
+    start_date: Optional[str] = typer.Option(None, help="Start date (YYYY-MM-DD), defaults to 1 year ago"),
+    end_date: Optional[str] = typer.Option(None, help="End date (YYYY-MM-DD), defaults to today"),
+):
+    """Check which symbols are missing data."""
+    from datetime import datetime, timedelta, timezone
+    
+    fetcher = StooqDataFetcher()
+    
+    # Parse dates
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    else:
+        start_dt = datetime.now(timezone.utc) - timedelta(days=365)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    else:
+        end_dt = datetime.now(timezone.utc)
+    
+    typer.echo(f"Checking missing data from {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}")
+    
+    if not symbols_csv.exists():
+        typer.echo(f"Symbols file {symbols_csv} does not exist")
+        raise typer.Exit(code=1)
+    
+    symbols = fetcher.load_symbols_from_csv(symbols_csv)
+    
+    if not symbols:
+        typer.echo("No symbols found in CSV file")
+        raise typer.Exit(code=1)
+    
+    typer.echo(f"\nChecking {len(symbols)} symbols...")
+    
+    missing_symbols = []
+    existing_symbols = []
+    
+    for symbol, exchange in symbols:
+        existing_dates = fetcher.get_existing_data_dates(data_path, symbol)
+        
+        # Check if we have data for the period
+        has_data = False
+        for date in existing_dates:
+            if start_dt.date() <= date <= end_dt.date():
+                has_data = True
+                break
+        
+        if has_data:
+            existing_symbols.append((symbol, exchange))
+        else:
+            missing_symbols.append((symbol, exchange))
+    
+    typer.echo(f"\nResults:")
+    typer.echo(f"  Symbols with data: {len(existing_symbols)}")
+    typer.echo(f"  Symbols missing data: {len(missing_symbols)}")
+    
+    if missing_symbols:
+        typer.echo(f"\nMissing symbols:")
+        for symbol, exchange in missing_symbols[:20]:  # Show first 20
+            typer.echo(f"  {symbol} ({exchange})")
+        if len(missing_symbols) > 20:
+            typer.echo(f"  ... and {len(missing_symbols) - 20} more")
+    
+    if existing_symbols:
+        typer.echo(f"\nSymbols with data:")
+        for symbol, exchange in existing_symbols[:10]:  # Show first 10
+            typer.echo(f"  {symbol} ({exchange})")
+        if len(existing_symbols) > 10:
+            typer.echo(f"  ... and {len(existing_symbols) - 10} more")
 
 
 if __name__ == "__main__":

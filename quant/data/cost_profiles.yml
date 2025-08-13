@@ -3,6 +3,11 @@ US:
   commission_per_share: 0.005
   sec_fee_bps: 0.221 # applies to sells only, in basis points
   taf_per_share: 0.000145 # applies to sells only
+XNAS:
+  type: per_share_plus_fees
+  commission_per_share: 0.005
+  sec_fee_bps: 0.221 # applies to sells only, in basis points
+  taf_per_share: 0.000145 # applies to sells only
 XNYS:
   type: per_share_plus_fees
   commission_per_share: 0.005

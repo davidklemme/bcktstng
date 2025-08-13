@@ -51,6 +51,8 @@ quant/data/comprehensive_symbols.csv
 quant/data/*_symbols.csv
 quant/data/market_data_*.csv
 quant/data/generated_*.csv
+quant/data/stooq_data.csv
+quant/data/stooq_*.csv
 
 # Generated files
 examples/generated_*.csv

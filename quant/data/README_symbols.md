@@ -17,12 +17,15 @@ This directory contains tools for managing stock symbols from major global marke
 - Generated market data files
 - Backup files
 - Database files
+- Stooq historical data files
 
 ## CLI Commands
 
-The quant CLI includes several commands for managing symbols:
+The quant CLI includes several commands for managing symbols and fetching historical data:
 
-### List Available Markets
+### Symbol Management
+
+#### List Available Markets
 
 ```bash
 python3 -m quant.orchestrator.cli list-markets
@@ -30,7 +33,7 @@ python3 -m quant.orchestrator.cli list-markets
 
 This shows all available major markets with their exchange codes and currencies.
 
-### Fetch Symbols (Dry Run)
+#### Fetch Symbols (Dry Run)
 
 ```bash
 python3 -m quant.orchestrator.cli fetch-symbols --dry-run
@@ -38,7 +41,7 @@ python3 -m quant.orchestrator.cli fetch-symbols --dry-run
 
 This shows what symbols would be fetched without actually saving them. Useful for previewing changes.
 
-### Fetch Symbols from Specific Markets
+#### Fetch Symbols from Specific Markets
 
 ```bash
 python3 -m quant.orchestrator.cli fetch-symbols --markets XNAS,XNYS,XLON --output-path my_symbols.csv
@@ -46,7 +49,7 @@ python3 -m quant.orchestrator.cli fetch-symbols --markets XNAS,XNYS,XLON --outpu
 
 Fetches symbols from NASDAQ, NYSE, and London Stock Exchange.
 
-### Compare with Existing File
+#### Compare with Existing File
 
 ```bash
 python3 -m quant.orchestrator.cli fetch-symbols --compare-existing quant/data/dummy/symbols.csv
@@ -54,7 +57,7 @@ python3 -m quant.orchestrator.cli fetch-symbols --compare-existing quant/data/du
 
 Shows differences between what would be fetched and an existing symbols file.
 
-### Update Existing Symbols File
+#### Update Existing Symbols File
 
 ```bash
 python3 -m quant.orchestrator.cli update-symbols --symbols-csv quant/data/comprehensive_symbols.csv --dry-run
@@ -62,153 +65,226 @@ python3 -m quant.orchestrator.cli update-symbols --symbols-csv quant/data/compre
 
 Shows what changes would be made to an existing symbols file without actually updating it.
 
-### Update with Backup
+### Historical Data Fetching (Stooq)
+
+#### Fetch Data for Single Symbol
 
 ```bash
-python3 -m quant.orchestrator.cli update-symbols --symbols-csv quant/data/comprehensive_symbols.csv --backup
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbol AAPL --exchange XNAS --start-date 2024-01-01 --end-date 2024-08-13
 ```
 
-Updates the symbols file and creates a timestamped backup before making changes.
+Fetches historical data for a specific symbol from Stooq.
 
-## Supported Markets
+#### Fetch Data for Multiple Symbols
 
-The system supports symbols from major global exchanges:
+```bash
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv quant/data/comprehensive_symbols.csv --delay 2.0
+```
+
+Fetches data for all symbols in the CSV with a 2-second delay between requests.
+
+#### Dry Run (Preview)
+
+```bash
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv quant/data/comprehensive_symbols.csv --dry-run
+```
+
+Shows what would be fetched without actually downloading data.
+
+#### Force Refresh All Data
+
+```bash
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv quant/data/comprehensive_symbols.csv --force-refresh
+```
+
+Ignores existing data and fetches everything fresh.
+
+#### View Data Summary
+
+```bash
+python3 -m quant.orchestrator.cli stooq-data-summary --data-path quant/data/stooq_data.csv
+```
+
+Shows summary of existing historical data.
+
+#### Check Missing Data
+
+```bash
+python3 -m quant.orchestrator.cli check-missing-data --symbols-csv quant/data/comprehensive_symbols.csv --data-path quant/data/stooq_data.csv
+```
+
+Identifies which symbols are missing data for a given date range.
+
+## Stooq Data Features
+
+### Intelligent Missing Data Detection
+
+- Automatically detects existing data for each symbol
+- Only fetches missing data points
+- Saves time and bandwidth
+- Prevents duplicate data
+
+### Rate Limiting
+
+- Configurable delays between requests
+- Respects Stooq's rate limits
+- Prevents being blocked
+
+### Multi-Exchange Support
+
+- Automatic symbol format conversion for different exchanges
+- Supports major global exchanges
+- Handles different date formats and currencies
+
+### Data Quality
+
+- Validates data before saving
+- Handles missing or corrupted data gracefully
+- Provides detailed logging and error reporting
+
+### Flexible Date Ranges
+
+- Defaults to last year of data
+- Customizable start and end dates
+- Supports any date range
+
+## Supported Exchanges for Stooq Data
+
+The system automatically converts symbol formats for different exchanges:
 
 ### North America
 
-- **XNAS** - NASDAQ (USD)
-- **XNYS** - New York Stock Exchange (USD)
-- **XTSX** - Toronto Stock Exchange (CAD)
+- **XNAS** - NASDAQ (symbol.US)
+- **XNYS** - New York Stock Exchange (symbol.US)
 
 ### Europe
 
-- **XLON** - London Stock Exchange (GBP)
-- **XAMS** - Euronext Amsterdam (EUR)
-- **XPAR** - Euronext Paris (EUR)
-- **XBRU** - Euronext Brussels (EUR)
-- **XLIS** - Euronext Lisbon (EUR)
-- **XOSL** - Oslo Stock Exchange (NOK)
-- **XSTO** - Stockholm Stock Exchange (SEK)
-- **XHEL** - Helsinki Stock Exchange (EUR)
-- **XCOP** - Copenhagen Stock Exchange (DKK)
-- **XICE** - Iceland Stock Exchange (ISK)
-- **XWAR** - Warsaw Stock Exchange (PLN)
-- **XPRA** - Prague Stock Exchange (CZK)
-- **XBUD** - Budapest Stock Exchange (HUF)
-- **XVIE** - Vienna Stock Exchange (EUR)
-- **XSWX** - SIX Swiss Exchange (CHF)
-- **XETR** - Deutsche Börse (EUR)
-- **XMIL** - Borsa Italiana (EUR)
-- **XMAD** - Madrid Stock Exchange (EUR)
+- **XLON** - London Stock Exchange (symbol.L)
+- **XETR** - Deutsche Börse (symbol.DE)
+- **XAMS** - Euronext Amsterdam (symbol.AS)
+- **XPAR** - Euronext Paris (symbol.PA)
+- **XBRU** - Euronext Brussels (symbol.BR)
+- **XSWX** - SIX Swiss Exchange (symbol.SW)
 
 ### Asia-Pacific
 
-- **XTOK** - Tokyo Stock Exchange (JPY)
-- **XHKG** - Hong Kong Stock Exchange (HKD)
-- **XSHG** - Shanghai Stock Exchange (CNY)
-- **XSHE** - Shenzhen Stock Exchange (CNY)
-- **XBOM** - Bombay Stock Exchange (INR)
-- **XNSE** - National Stock Exchange of India (INR)
-- **XASX** - Australian Securities Exchange (AUD)
+- **XTOK** - Tokyo Stock Exchange (symbol - no suffix)
+- **XHKG** - Hong Kong Stock Exchange (symbol.HK)
+- **XASX** - Australian Securities Exchange (symbol.AX)
 
 ### Other Regions
 
-- **XSAO** - São Paulo Stock Exchange (BRL)
-- **XBMF** - B3 Brazilian Mercantile and Futures Exchange (BRL)
-- **XJSE** - Johannesburg Stock Exchange (ZAR)
-- **XTAE** - Tel Aviv Stock Exchange (ILS)
-- **XKAR** - Karachi Stock Exchange (PKR)
-- **XCAI** - Cairo Stock Exchange (EGP)
-- **XRIY** - Riyadh Stock Exchange (SAR)
-- **XADX** - Abu Dhabi Securities Exchange (AED)
-- **XDFM** - Dubai Financial Market (AED)
+- **XTSX** - Toronto Stock Exchange (symbol.TO)
 
-## Symbol Data Format
+## Data Format
 
-The CSV format includes:
+The Stooq data CSV format includes:
 
-- `symbol_id` - Unique identifier
-- `ticker` - Stock symbol/ticker
+- `symbol` - Stock symbol/ticker
 - `exchange` - Exchange code
-- `currency` - Trading currency
-- `active_from` - When the symbol became active (ISO 8601 format)
-- `active_to` - When the symbol became inactive (empty for current symbols)
+- `date` - Trading date (ISO 8601 format)
+- `open` - Opening price
+- `high` - High price
+- `low` - Low price
+- `close` - Closing price
+- `volume` - Trading volume
 
-## Historic Symbols
+## Workflow Examples
 
-The system supports historic symbols with proper date ranges. For example:
+### 1. Initial Setup
 
-- **FB** (Facebook) was renamed to **META** on October 28, 2021
-- **GOOG** (Google) was renamed to **GOOGL** on July 15, 2022
+```bash
+# List available markets
+python3 -m quant.orchestrator.cli list-markets
 
-These changes are reflected in the `active_to` field.
+# Fetch symbols for major markets
+python3 -m quant.orchestrator.cli fetch-symbols --markets XNAS,XNYS,XLON --output-path my_symbols.csv
+
+# Preview what data would be fetched
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv my_symbols.csv --dry-run
+```
+
+### 2. Fetch Historical Data
+
+```bash
+# Fetch data for last year with 2-second delays
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv my_symbols.csv --delay 2.0
+
+# Check what's missing
+python3 -m quant.orchestrator.cli check-missing-data --symbols-csv my_symbols.csv
+
+# View summary
+python3 -m quant.orchestrator.cli stooq-data-summary
+```
+
+### 3. Incremental Updates
+
+```bash
+# Fetch only missing data (default behavior)
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv my_symbols.csv
+
+# Force refresh all data
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbols-csv my_symbols.csv --force-refresh
+```
+
+### 4. Individual Symbol Management
+
+```bash
+# Fetch data for specific symbol
+python3 -m quant.orchestrator.cli fetch-stooq-data --symbol AAPL --exchange XNAS --start-date 2024-01-01
+
+# Check data for specific symbol
+python3 -m quant.orchestrator.cli stooq-data-summary | grep AAPL
+```
 
 ## Integration with Backtesting
 
-The symbols can be used with the existing backtesting system:
-
-```bash
-python3 -m quant.orchestrator.cli run-backtest bollinger \
-  --start 2023-01-01T00:00:00Z \
-  --end 2023-12-31T00:00:00Z \
-  --bars-csv path/to/bars.csv \
-  --symbols-db path/to/symbols.db
-```
-
-## Generic Market Approach
-
-The system uses a generic, configuration-driven approach that makes it easy to add support for any market:
-
-### Adding New Markets
-
-To add a new market, simply add a configuration to the `get_market_config` method:
+The Stooq data can be used with the existing backtesting system by converting the format:
 
 ```python
-'XNEW': {  # New Exchange
-    'name': 'New Stock Exchange',
-    'currency': 'XXX',
-    'data_sources': [
-        {
-            'name': 'Exchange Website',
-            'type': 'web_scrape',
-            'url': 'https://exchange.com/market-data',
-            'parser': 'generic_web'
-        }
-    ],
-    'fallback_symbols': ['SYMB1', 'SYMB2', 'SYMB3']
-}
+# Convert Stooq data to bars format for backtesting
+import pandas as pd
+
+# Load Stooq data
+stooq_data = pd.read_csv('quant/data/stooq_data.csv')
+
+# Convert to bars format
+bars_data = stooq_data.rename(columns={
+    'symbol': 'symbol_id',
+    'date': 'timestamp',
+    'open': 'open_price',
+    'high': 'high_price',
+    'low': 'low_price',
+    'close': 'close_price',
+    'volume': 'volume'
+})
+
+# Save in bars format
+bars_data.to_csv('quant/data/bars_from_stooq.csv', index=False)
 ```
 
-### Benefits
+## Error Handling
 
-1. **Easy to extend** - Add markets without changing core code
-2. **Consistent interface** - Same API for all markets
-3. **Multiple data sources** - Each market can have multiple data sources
-4. **Fallback system** - Predefined symbols if APIs fail
-5. **Automatic currency detection** - Each market knows its currency
+The system handles various error conditions:
 
-## Data Sources
+- **Network errors**: Retries with exponential backoff
+- **Invalid symbols**: Logs warning and continues
+- **Missing data**: Gracefully handles symbols with no data
+- **Rate limiting**: Respects delays and handles 429 responses
+- **Data corruption**: Validates data before saving
 
-The current implementation includes curated lists of major symbols from each exchange. In a production environment, you would want to:
+## Performance Considerations
 
-1. Integrate with real-time data providers (Yahoo Finance, Alpha Vantage, etc.)
-2. Add web scraping for exchange websites
-3. Implement proper rate limiting and error handling
-4. Add more comprehensive symbol metadata (company names, sectors, market cap, etc.)
+- **Rate limiting**: Default 1-second delay, increase for large datasets
+- **Memory usage**: Processes data in chunks for large files
+- **Disk space**: Historical data can be large, monitor storage
+- **Network**: Consider bandwidth for large datasets
 
 ## Future Enhancements
 
-- Real-time symbol updates
-- Automatic delisting detection
-- Sector and industry classification
-- Market cap and volume data
-- Options and futures symbols
-- Cryptocurrency exchanges
-
-## Workflow
-
-1. **Development**: Use dummy data for testing
-2. **Production**: Fetch comprehensive data using CLI commands
-3. **Updates**: Use dry-run to preview changes before applying
-4. **Backup**: Always create backups before major updates
-5. **Version Control**: Keep only minimal data in repository
+- Real-time data streaming
+- Additional data providers (Yahoo Finance, Alpha Vantage)
+- Options and futures data
+- Fundamental data integration
+- Data validation and quality metrics
+- Automated data updates via cron jobs
