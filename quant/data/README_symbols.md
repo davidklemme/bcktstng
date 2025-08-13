@@ -2,11 +2,21 @@
 
 This directory contains tools for managing stock symbols from major global markets. The system supports both current and historic symbols with proper date ranges.
 
-## Files
+## Data Management
 
-- `comprehensive_symbols.csv` - Comprehensive list of symbols from major global markets
-- `market_data_fetcher.py` - Module for fetching symbols from various exchanges
-- `symbols_repository.py` - Database interface for symbol management
+**Important**: The repository only contains minimal dummy data. Comprehensive market data files are excluded from version control to keep the repository clean and lightweight.
+
+### Files in Repository
+
+- `dummy/symbols.csv` - Minimal dummy data for testing (3 symbols)
+- `comprehensive_symbols.csv` - Template with 10 sample symbols from different markets
+
+### Files Excluded from Repository
+
+- Large comprehensive symbol files
+- Generated market data files
+- Backup files
+- Database files
 
 ## CLI Commands
 
@@ -138,12 +148,44 @@ These changes are reflected in the `active_to` field.
 The symbols can be used with the existing backtesting system:
 
 ```bash
-python -m quant.orchestrator.cli run-backtest bollinger \
+python3 -m quant.orchestrator.cli run-backtest bollinger \
   --start 2023-01-01T00:00:00Z \
   --end 2023-12-31T00:00:00Z \
   --bars-csv path/to/bars.csv \
   --symbols-db path/to/symbols.db
 ```
+
+## Generic Market Approach
+
+The system uses a generic, configuration-driven approach that makes it easy to add support for any market:
+
+### Adding New Markets
+
+To add a new market, simply add a configuration to the `get_market_config` method:
+
+```python
+'XNEW': {  # New Exchange
+    'name': 'New Stock Exchange',
+    'currency': 'XXX',
+    'data_sources': [
+        {
+            'name': 'Exchange Website',
+            'type': 'web_scrape',
+            'url': 'https://exchange.com/market-data',
+            'parser': 'generic_web'
+        }
+    ],
+    'fallback_symbols': ['SYMB1', 'SYMB2', 'SYMB3']
+}
+```
+
+### Benefits
+
+1. **Easy to extend** - Add markets without changing core code
+2. **Consistent interface** - Same API for all markets
+3. **Multiple data sources** - Each market can have multiple data sources
+4. **Fallback system** - Predefined symbols if APIs fail
+5. **Automatic currency detection** - Each market knows its currency
 
 ## Data Sources
 
@@ -162,3 +204,11 @@ The current implementation includes curated lists of major symbols from each exc
 - Market cap and volume data
 - Options and futures symbols
 - Cryptocurrency exchanges
+
+## Workflow
+
+1. **Development**: Use dummy data for testing
+2. **Production**: Fetch comprehensive data using CLI commands
+3. **Updates**: Use dry-run to preview changes before applying
+4. **Backup**: Always create backups before major updates
+5. **Version Control**: Keep only minimal data in repository
