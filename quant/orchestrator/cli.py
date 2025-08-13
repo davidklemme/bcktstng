@@ -20,6 +20,7 @@ from ..research.search import run_hyperparameter_search
 from ..strategies.simple.bollinger import BollingerBands
 from ..strategies.simple.roc import RateOfChange
 from ..data.stooq_data_fetcher import StooqDataFetcher
+from ..data.fx_rate_fetcher import FxRateFetcher
 
 app = typer.Typer(help="Quant orchestration CLI")
 
@@ -520,7 +521,7 @@ def fetch_stooq_data(
     if start_date:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
     else:
-        start_dt = datetime.now(timezone.utc) - timedelta(days=365)
+        start_dt = datetime.now(timezone.utc) - timedelta(days=365)  # Default to 1 year
     
     if end_date:
         end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -597,7 +598,7 @@ def fetch_stooq_data(
 
 @app.command("stooq-data-summary")
 def stooq_data_summary(
-    data_path: Path = typer.Option(Path("quant/data/stooq_data.csv"), help="Path to Stooq data CSV"),
+    data_path: Path = typer.Option(Path("quant/data/bars_from_stooq.csv"), help="Path to Stooq data CSV"),
 ):
     """Show summary of existing Stooq data."""
     fetcher = StooqDataFetcher()
@@ -628,7 +629,7 @@ def stooq_data_summary(
 @app.command("check-missing-data")
 def check_missing_data(
     symbols_csv: Path = typer.Option(Path("quant/data/comprehensive_symbols.csv"), help="Path to symbols CSV"),
-    data_path: Path = typer.Option(Path("quant/data/stooq_data.csv"), help="Path to Stooq data CSV"),
+    data_path: Path = typer.Option(Path("quant/data/bars_from_stooq.csv"), help="Path to Stooq data CSV"),
     start_date: Optional[str] = typer.Option(None, help="Start date (YYYY-MM-DD), defaults to 1 year ago"),
     end_date: Optional[str] = typer.Option(None, help="End date (YYYY-MM-DD), defaults to today"),
 ):
@@ -697,6 +698,81 @@ def check_missing_data(
             typer.echo(f"  {symbol} ({exchange})")
         if len(existing_symbols) > 10:
             typer.echo(f"  ... and {len(existing_symbols) - 10} more")
+
+
+@app.command("fetch-fx-rates")
+def fetch_fx_rates(
+    output_path: Path = typer.Option(Path("quant/data/fx_rates.csv"), help="Output CSV file path"),
+    start_date: str = typer.Option("1990-01-01", help="Start date (YYYY-MM-DD), defaults to match oldest symbol data"),
+    end_date: str = typer.Option("2024-12-31", help="End date (YYYY-MM-DD)"),
+    delay: float = typer.Option(1.0, help="Delay between requests in seconds"),
+    verbose: bool = typer.Option(False, help="Enable verbose logging"),
+    auto_range: bool = typer.Option(False, help="Automatically determine date range from existing symbol data"),
+):
+    """Fetch historical FX rates from Stooq and save to CSV."""
+    from datetime import datetime, timezone
+    import logging
+    
+    # Configure logging
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    
+    # Parse dates
+    if auto_range:
+        # Automatically determine date range from existing symbol data
+        bars_data_path = Path("quant/data/bars_from_stooq.csv")
+        if bars_data_path.exists():
+            fetcher = StooqDataFetcher()
+            summary = fetcher.get_data_summary(bars_data_path)
+            if summary:
+                # Find the earliest and latest dates across all symbols
+                earliest_date = None
+                latest_date = None
+                for symbol_info in summary.values():
+                    if symbol_info['first_date']:
+                        if earliest_date is None or symbol_info['first_date'] < earliest_date:
+                            earliest_date = symbol_info['first_date']
+                    if symbol_info['last_date']:
+                        if latest_date is None or symbol_info['last_date'] > latest_date:
+                            latest_date = symbol_info['last_date']
+                
+                if earliest_date and latest_date:
+                    start_dt = earliest_date
+                    end_dt = latest_date
+                    typer.echo(f"Auto-determined date range from symbol data: {earliest_date.strftime('%Y-%m-%d')} to {latest_date.strftime('%Y-%m-%d')}")
+                else:
+                    start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                    end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                    typer.echo(f"Could not determine date range from symbol data, using defaults: {start_date} to {end_date}")
+            else:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                typer.echo(f"No symbol data found, using defaults: {start_date} to {end_date}")
+        else:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+            typer.echo(f"No symbol data file found, using defaults: {start_date} to {end_date}")
+    else:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        typer.echo(f"Fetching FX rates from {start_date} to {end_date}")
+    
+    typer.echo(f"Output: {output_path}")
+    
+    # Fetch FX rates
+    fetcher = FxRateFetcher(delay_seconds=delay)
+    result = fetcher.fetch_major_currencies(
+        output_path=output_path,
+        start_date=start_dt,
+        end_date=end_dt
+    )
+    
+    typer.echo(f"\nFX rates saved to: {output_path}")
+    typer.echo(f"Total data points: {result['total_points']}")
+    typer.echo(f"Successful pairs: {result['successful']}")
+    typer.echo(f"Failed pairs: {result['failed']}")
 
 
 if __name__ == "__main__":

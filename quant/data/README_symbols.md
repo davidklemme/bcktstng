@@ -280,6 +280,55 @@ The system handles various error conditions:
 - **Disk space**: Historical data can be large, monitor storage
 - **Network**: Consider bandwidth for large datasets
 
+## FX Rate Management
+
+The system supports FX rate data for currency conversion during backtesting. FX rates are stored in a SQLite database and can be loaded from CSV files.
+
+### FX Rate Format
+
+FX rates should be in CSV format with the following columns:
+
+- `ts`: Timestamp in ISO format (e.g., `2024-01-01T00:00:00Z`)
+- `base_ccy`: Base currency (e.g., `USD`)
+- `quote_ccy`: Quote currency (e.g., `EUR`)
+- `rate`: Exchange rate (e.g., `0.85`)
+
+### Fetching FX Rates
+
+To fetch historical FX rates from Stooq:
+
+```bash
+# Fetch FX rates with auto-determined date range (matches symbol data)
+python3 -m quant.orchestrator.cli fetch-fx-rates --auto-range
+
+# Fetch FX rates for specific date range
+python3 -m quant.orchestrator.cli fetch-fx-rates --start-date 2020-01-01 --end-date 2024-12-31
+
+# Fetch with verbose logging
+python3 -m quant.orchestrator.cli fetch-fx-rates --auto-range --verbose
+```
+
+### Loading FX Rates
+
+To load FX rates from a CSV file into the database:
+
+```bash
+python3 quant/data/load_fx_to_db.py quant/data/fx_rates.csv
+```
+
+### Supported Currency Pairs
+
+The system fetches 16 major currency pairs:
+
+- USD/EUR, EUR/USD
+- USD/GBP, GBP/USD
+- USD/JPY, JPY/USD
+- USD/CHF, CHF/USD
+- EUR/GBP, GBP/EUR
+- EUR/JPY, JPY/EUR
+- EUR/CHF, CHF/EUR
+- GBP/JPY, JPY/GBP
+
 ## Future Enhancements
 
 - Real-time data streaming

@@ -291,7 +291,7 @@ class StooqDataFetcher:
                           force_refresh: bool = False) -> Dict[str, int]:
         """Fetch data for multiple symbols with delays."""
         if start_date is None:
-            start_date = datetime.now(timezone.utc) - timedelta(days=365)  # Last year
+            start_date = datetime.now(timezone.utc) - timedelta(days=365)  # Default to 1 year
         
         if end_date is None:
             end_date = datetime.now(timezone.utc)
@@ -404,6 +404,38 @@ class StooqDataFetcher:
         try:
             with open(csv_path, 'r', newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
+                
+                # Check if this is the old format (symbol, date) or new format (symbol_id, dt)
+                first_row = next(reader, None)
+                if not first_row:
+                    return summary
+                
+                # Reset file pointer
+                f.seek(0)
+                next(f)  # Skip header
+                
+                if 'symbol' in first_row and 'date' in first_row:
+                    # Old format
+                    return self._get_old_format_summary(csv_path)
+                elif 'symbol_id' in first_row and 'dt' in first_row:
+                    # New bars format
+                    return self._get_bars_format_summary(csv_path)
+                else:
+                    logger.error(f"Unknown CSV format in {csv_path}")
+                    return summary
+                    
+        except Exception as e:
+            logger.error(f"Error reading data summary from {csv_path}: {e}")
+        
+        return summary
+    
+    def _get_old_format_summary(self, csv_path: Path) -> Dict[str, Dict]:
+        """Get summary for old format CSV (symbol, date columns)."""
+        summary = {}
+        
+        try:
+            with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
                 for row in reader:
                     symbol = row.get('symbol')
                     if symbol:
@@ -426,6 +458,39 @@ class StooqDataFetcher:
                         except (ValueError, KeyError):
                             continue
         except Exception as e:
-            logger.error(f"Error reading data summary from {csv_path}: {e}")
+            logger.error(f"Error reading old format summary from {csv_path}: {e}")
+        
+        return summary
+    
+    def _get_bars_format_summary(self, csv_path: Path) -> Dict[str, Dict]:
+        """Get summary for new bars format CSV (symbol_id, dt columns)."""
+        summary = {}
+        
+        try:
+            with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    symbol_id = row.get('symbol_id')
+                    if symbol_id:
+                        if symbol_id not in summary:
+                            summary[symbol_id] = {
+                                'exchange': '',  # Not available in bars format
+                                'data_points': 0,
+                                'first_date': None,
+                                'last_date': None
+                            }
+                        
+                        summary[symbol_id]['data_points'] += 1
+                        
+                        try:
+                            date = datetime.strptime(row['dt'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                            if summary[symbol_id]['first_date'] is None or date < summary[symbol_id]['first_date']:
+                                summary[symbol_id]['first_date'] = date
+                            if summary[symbol_id]['last_date'] is None or date > summary[symbol_id]['last_date']:
+                                summary[symbol_id]['last_date'] = date
+                        except (ValueError, KeyError):
+                            continue
+        except Exception as e:
+            logger.error(f"Error reading bars format summary from {csv_path}: {e}")
         
         return summary 
