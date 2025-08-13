@@ -775,5 +775,15 @@ def fetch_fx_rates(
     typer.echo(f"Failed pairs: {result['failed']}")
 
 
+@app.command("visualize-run")
+def visualize_run_cmd(
+	run_dir: Path = typer.Argument(..., help="Run directory containing equity.csv and orders.csv"),
+	out_path: Optional[Path] = typer.Option(None, help="PNG output path; defaults to <run_dir>/visualization.png"),
+):
+	from ..ops.visualize import visualize_run
+	out = visualize_run(str(run_dir), str(out_path) if out_path is not None else None)
+	typer.echo(f"Visualization written to: {out}")
+
+
 if __name__ == "__main__":
     app()
