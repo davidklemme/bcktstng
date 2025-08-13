@@ -10,7 +10,7 @@ from quant.orchestrator.backtest import run_backtest
 from quant.strategies.simple.bollinger import BollingerBands
 from quant.strategies.simple.roc import RateOfChange
 
-DATA_DIR = Path("/workspace/quant/data/dummy")
+DATA_DIR = Path("quant/data/dummy")
 
 
 def _prepare_reader_and_store():
@@ -35,7 +35,7 @@ def test_bollinger_backtest_smoke(capsys):
     start = datetime.fromisoformat("2024-01-03")
     end = datetime.fromisoformat("2024-02-29")
 
-    strat = BollingerBands(symbol="AAPL", window=10, num_std=2.0, position_size=50)
+    strat = BollingerBands(window=10, num_std=2.0, position_size=50)
 
     result = run_backtest(
         strategy=strat,
@@ -44,8 +44,8 @@ def test_bollinger_backtest_smoke(capsys):
         start=start,
         end=end,
         base_currency="EUR",
-        costs_yaml_path=str(Path("/workspace/quant/data/cost_profiles.yml")),
-        out_dir=Path("/workspace/runs/tests/bollinger"),
+        costs_yaml_path=str(Path("quant/data/cost_profiles.yml")),
+        out_dir=Path("runs/tests/bollinger"),
     )
 
     # Print some console output for visual check
@@ -56,6 +56,10 @@ def test_bollinger_backtest_smoke(capsys):
     # Basic assertions to ensure viability
     assert len(result.equity) > 0
     assert isinstance(result.metrics.get("return"), float)
+    
+    # Check that the strategy processed multiple symbols
+    print("Bollinger available symbols:", len(strat.available_symbols))
+    assert len(strat.available_symbols) == 3  # AAPL, MSFT, GOOGL
 
 
 def test_roc_backtest_smoke(capsys):
@@ -64,7 +68,7 @@ def test_roc_backtest_smoke(capsys):
     start = datetime.fromisoformat("2024-01-03")
     end = datetime.fromisoformat("2024-02-29")
 
-    strat = RateOfChange(symbol="AAPL", window=5, upper=0.03, lower=-0.03, position_size=50)
+    strat = RateOfChange(window=5, upper=0.03, lower=-0.03, position_size=50)
 
     result = run_backtest(
         strategy=strat,
@@ -73,8 +77,8 @@ def test_roc_backtest_smoke(capsys):
         start=start,
         end=end,
         base_currency="EUR",
-        costs_yaml_path=str(Path("/workspace/quant/data/cost_profiles.yml")),
-        out_dir=Path("/workspace/runs/tests/roc"),
+        costs_yaml_path=str(Path("quant/data/cost_profiles.yml")),
+        out_dir=Path("runs/tests/roc"),
     )
 
     print("ROC metrics:", json.dumps(result.metrics, indent=2))
@@ -83,3 +87,7 @@ def test_roc_backtest_smoke(capsys):
 
     assert len(result.equity) > 0
     assert isinstance(result.metrics.get("return"), float)
+    
+    # Check that the strategy processed multiple symbols
+    print("ROC available symbols:", len(strat.available_symbols))
+    assert len(strat.available_symbols) == 3  # AAPL, MSFT, GOOGL

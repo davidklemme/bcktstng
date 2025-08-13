@@ -7,7 +7,7 @@ from quant.data.costs import load_calculator_from_yaml
 
 
 def test_paper_broker_fill_respects_adv_cap_and_spread_and_costs():
-    calc = load_calculator_from_yaml("/workspace/quant/data/cost_profiles.yml")
+    calc = load_calculator_from_yaml("quant/data/cost_profiles.yml")
     broker = PaperBroker(cost_calculator=calc, adv_by_symbol={1: 10000}, adv_cap_fraction=0.1, impact_alpha=0.2, sigma_by_symbol={1: 0.02})
 
     quote = Quote(bid=99.0, ask=101.0)
@@ -38,7 +38,7 @@ def test_cancel_order():
 
 
 def test_ibkr_adapter_dry_run_and_live_guard():
-    calc = load_calculator_from_yaml("/workspace/quant/data/cost_profiles.yml")
+    calc = load_calculator_from_yaml("quant/data/cost_profiles.yml")
     ibkr = IBKRAdapter(cost_calculator=calc, dry_run=True, adv_by_symbol={1: 10000})
     quote = Quote(bid=10.0, ask=10.02)
     order = Order(id="ib1", symbol_id=1, side=OrderSide.BUY, quantity=100, type=OrderType.MARKET, tif=TimeInForce.DAY)

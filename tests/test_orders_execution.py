@@ -32,7 +32,7 @@ def test_order_lifecycle_ioc_fok_day(tmp_path):
 
 def test_execution_within_spread_and_adv_partial(tmp_path):
     # Simulator with ADV and costs
-    calc = load_calculator_from_yaml("/workspace/quant/data/cost_profiles.yml")
+    calc = load_calculator_from_yaml("quant/data/cost_profiles.yml")
     sim = ExecutionSimulator(cost_calculator=calc, adv_by_symbol={1: 10000}, adv_cap_fraction=0.1, impact_alpha=0.2, sigma_by_symbol={1: 0.02})
 
     quote = Quote(bid=99.0, ask=101.0)

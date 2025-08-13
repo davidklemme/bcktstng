@@ -1,24 +1,31 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, Optional, Dict
 
-from ...sdk.strategy import Strategy, Context
+from ...sdk.strategy import MultiSymbolStrategy, Context
+from ...data.symbols_repository import SymbolRow
 
 
 @dataclass
-class BollingerBands(Strategy):
-    symbol: str
+class BollingerBands(MultiSymbolStrategy):
     window: int = 20
     num_std: float = 2.0
     position_size: int = 100
-    last_state: Optional[str] = None  # 'long', 'short', or 'flat'
+    last_states: Dict[str, Optional[str]] = field(default_factory=dict)  # symbol ticker -> 'long', 'short', or 'flat'
 
     def on_start(self, ctx: Context) -> None:
-        ctx.log.info("BollingerBands starting for %s (window=%d, k=%.2f)", self.symbol, self.window, self.num_std)
+        super().on_start(ctx)
+        ctx.log.info("BollingerBands starting (window=%d, k=%.2f)", self.window, self.num_std)
 
-    def on_event(self, evt: Any, ctx: Context) -> None:
-        data = ctx.data.get(self.symbol, ["close"], lookback=self.window + 1, at=ctx.now)
+    def on_symbol_event(self, symbol: SymbolRow, evt: Any, ctx: Context) -> None:
+        symbol_ticker = symbol.ticker
+        
+        # Initialize state for this symbol if not exists
+        if symbol_ticker not in self.last_states:
+            self.last_states[symbol_ticker] = None
+
+        data = ctx.data.get(symbol_ticker, ["close"], lookback=self.window + 1, at=ctx.now)
         closes = data.get("close", [])
         if len(closes) < self.window:
             return
@@ -41,20 +48,21 @@ class BollingerBands(Strategy):
         else:
             state = "flat"
 
-        if self.last_state is None:
-            self.last_state = state
+        if self.last_states[symbol_ticker] is None:
+            self.last_states[symbol_ticker] = state
             return
 
-        if state != self.last_state:
+        if state != self.last_states[symbol_ticker]:
             if state == "long":
-                ctx.order(self.symbol, self.position_size, side="BUY", type="MKT", tag="bb_long")
+                ctx.order(symbol_ticker, self.position_size, side="BUY", type="MKT", tag=f"bb_long_{symbol_ticker}")
             elif state == "short":
-                ctx.order(self.symbol, self.position_size, side="SELL", type="MKT", tag="bb_short")
+                ctx.order(symbol_ticker, self.position_size, side="SELL", type="MKT", tag=f"bb_short_{symbol_ticker}")
             else:
                 # flatten: if last was long -> sell; if last was short -> buy
-                side = "SELL" if self.last_state == "long" else "BUY"
-                ctx.order(self.symbol, self.position_size, side=side, type="MKT", tag="bb_flatten")
-            self.last_state = state
+                side = "SELL" if self.last_states[symbol_ticker] == "long" else "BUY"
+                ctx.order(symbol_ticker, self.position_size, side=side, type="MKT", tag=f"bb_flatten_{symbol_ticker}")
+            self.last_states[symbol_ticker] = state
 
     def on_end(self, ctx: Context) -> None:
-        ctx.log.info("BollingerBands finished for %s", self.symbol)
+        ctx.log.info("BollingerBands finished")
+        super().on_end(ctx)

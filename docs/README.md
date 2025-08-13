@@ -6,4 +6,4 @@
 - [First Strategy](./first_strategy.md): Create and run your first strategy
 - [Incidents](./incident_runbook.md): Operational runbook
 
-For architecture and scope, see `/workspace/Context.md`.
+For architecture and scope, see `Context.md`.

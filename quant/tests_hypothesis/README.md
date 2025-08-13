@@ -10,7 +10,7 @@ python -m quant.orchestrator.cli run-backtest \
   --strategy-symbol AAPL \
   --start 2024-01-03T00:00:00 \
   --end 2024-02-29T00:00:00 \
-  --bars-csv /workspace/quant/data/dummy/daily_bars.csv \
+  --bars-csv quant/data/dummy/daily_bars.csv \
   --exchange XNYS \
   --symbols-db :memory: \
   --fx-db :memory:
@@ -24,4 +24,4 @@ Pytest suite (prints metrics to console):
 pytest -q tests/simple_strategies -s
 ```
 
-Artifacts are written under `/workspace/runs/tests/...` and `/workspace/runs/cli` when invoked via CLI.
+Artifacts are written under `runs/tests/...` and `runs/cli` when invoked via CLI.

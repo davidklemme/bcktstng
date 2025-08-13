@@ -9,3 +9,5 @@ pydantic-settings>=2,<3
 python-dotenv>=1,<2
 prometheus-client>=0.20,<1
 requests>=2,<3
+beautifulsoup4>=4.12,<5
+lxml>=4.9,<5

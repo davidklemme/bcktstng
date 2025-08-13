@@ -34,6 +34,38 @@ class Strategy:
         return None
 
 
+class MultiSymbolStrategy(Strategy):
+    """Base class for strategies that work with multiple symbols.
+    
+    This strategy type automatically processes all available symbols in the dataset.
+    Subclasses should implement on_symbol_event() to handle individual symbol logic.
+    """
+
+    def on_start(self, ctx: "Context") -> None:
+        """Called once before the first event."""
+        super().on_start(ctx)
+        # Get all available symbols
+        self.available_symbols = ctx.get_available_symbols()
+        ctx.log.info(f"MultiSymbolStrategy starting with {len(self.available_symbols)} symbols: {[s.ticker for s in self.available_symbols]}")
+
+    def on_event(self, evt: Any, ctx: "Context") -> None:
+        """Called for every event - processes all available symbols."""
+        for symbol in self.available_symbols:
+            self.on_symbol_event(symbol, evt, ctx)
+
+    def on_symbol_event(self, symbol: SymbolRow, evt: Any, ctx: "Context") -> None:
+        """Called for each symbol on every event.
+        
+        Override this method to implement symbol-specific logic.
+        """
+        raise NotImplementedError("Subclasses must implement on_symbol_event()")
+
+    def on_end(self, ctx: "Context") -> None:
+        """Called once after the last event."""
+        ctx.log.info(f"MultiSymbolStrategy finished for {len(self.available_symbols)} symbols")
+        super().on_end(ctx)
+
+
 @dataclass
 class _CalendarAPI:
     def is_open(self, exchange: str, ts: datetime) -> bool:
@@ -185,3 +217,7 @@ class Context:
 
     def cancel(self, tag_or_id: str) -> None:
         self.order_api.cancel(tag_or_id)
+
+    def get_available_symbols(self) -> List[SymbolRow]:
+        """Returns all available symbols in the dataset."""
+        return self.data._reader.get_symbols(self.now)

@@ -5,26 +5,39 @@ Small deterministic datasets are provided for rapid iteration and hypothesis tes
 Location: `quant/data/dummy`
 
 Files:
+
 - `daily_bars.csv` – Columns: `dt,symbol_id,open,high,low,close,volume` (exchange `XNYS`)
 - `symbols.csv` – Columns: `symbol_id,ticker,exchange,currency,active_from,active_to`
 - `fx.csv` – Columns: `ts,base_ccy,quote_ccy,rate` (e.g., USD/EUR)
 
 These are used by the test suite and can be used directly with the CLI.
 
+## Dataset Contents
+
+The dummy dataset includes three symbols:
+
+- **AAPL** (symbol_id: 1) - Apple Inc.
+- **MSFT** (symbol_id: 2) - Microsoft Corporation
+- **GOOGL** (symbol_id: 3) - Alphabet Inc.
+
+All symbols have data from January 2, 2024 to February 29, 2024 with realistic price movements and volumes.
+
 ## Using with CLI
 
 Pass the bars CSV and (optionally) in-memory symbol/FX databases:
+
 ```bash
 python -m quant.orchestrator.cli run-backtest \
   bollinger \
-  --strategy-symbol AAPL \
   --start 2024-01-03T00:00:00 \
   --end 2024-02-29T00:00:00 \
-  --bars-csv /workspace/quant/data/dummy/daily_bars.csv \
+  --bars-csv quant/data/dummy/daily_bars.csv \
   --exchange XNYS \
   --symbols-db :memory: \
   --fx-db :memory:
 ```
+
+**Note**: The `--strategy-symbol` parameter is no longer required as strategies automatically process all available symbols.
 
 ## Persisting symbol/FX databases (optional)
 
@@ -35,9 +48,9 @@ from pathlib import Path
 from quant.data.symbols_repository import create_sqlite_engine, load_symbols_csv_to_db
 from quant.data.fx_repository import create_engine as create_fx_engine, load_fx_csv_to_db
 
-DATA = Path("/workspace/quant/data/dummy")
-SYMBOLS_DB = "/workspace/data/symbols.db"
-FX_DB = "/workspace/data/fx.db"
+DATA = Path("quant/data/dummy")
+SYMBOLS_DB = "data/symbols.db"
+FX_DB = "data/fx.db"
 
 symbols_engine = create_sqlite_engine(SYMBOLS_DB)
 fx_engine = create_fx_engine(FX_DB)
@@ -47,21 +60,31 @@ print("Wrote:", SYMBOLS_DB, FX_DB)
 ```
 
 Then run CLI pointing at these files:
+
 ```bash
 python -m quant.orchestrator.cli run-backtest \
   bollinger \
-  --strategy-symbol AAPL \
   --start 2024-01-03T00:00:00 \
   --end 2024-02-29T00:00:00 \
-  --bars-csv /workspace/quant/data/dummy/daily_bars.csv \
+  --bars-csv quant/data/dummy/daily_bars.csv \
   --exchange XNYS \
-  --symbols-db /workspace/data/symbols.db \
-  --fx-db /workspace/data/fx.db
+  --symbols-db data/symbols.db \
+  --fx-db data/fx.db
 ```
 
 ## Tests
 
 The test suite loads these CSVs directly and prints metrics to console:
+
 ```bash
 pytest -q tests/simple_strategies -s
 ```
+
+## Multi-Symbol Strategy Support
+
+The dummy dataset is designed to test multi-symbol strategy functionality:
+
+- **BollingerBands** and **RateOfChange** strategies automatically process all three symbols (AAPL, MSFT, GOOGL)
+- Each strategy maintains independent state tracking for each symbol
+- Orders are tagged with the symbol name for easy identification in results
+- The backtest engine processes all symbols simultaneously in each time step

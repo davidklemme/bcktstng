@@ -1,26 +1,33 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, Optional, Dict
 
-from ...sdk.strategy import Strategy, Context
+from ...sdk.strategy import MultiSymbolStrategy, Context
+from ...data.symbols_repository import SymbolRow
 
 
 @dataclass
-class RateOfChange(Strategy):
-    symbol: str
+class RateOfChange(MultiSymbolStrategy):
     window: int = 10
     upper: float = 0.02  # +2%
     lower: float = -0.02  # -2%
     position_size: int = 100
-    last_state: Optional[str] = None  # 'long', 'short', or 'flat'
+    last_states: Dict[str, Optional[str]] = field(default_factory=dict)  # symbol ticker -> 'long', 'short', or 'flat'
 
     def on_start(self, ctx: Context) -> None:
-        ctx.log.info("RateOfChange starting for %s (window=%d, upper=%.4f, lower=%.4f)", self.symbol, self.window, self.upper, self.lower)
+        super().on_start(ctx)
+        ctx.log.info("RateOfChange starting (window=%d, upper=%.4f, lower=%.4f)", self.window, self.upper, self.lower)
 
-    def on_event(self, evt: Any, ctx: Context) -> None:
+    def on_symbol_event(self, symbol: SymbolRow, evt: Any, ctx: Context) -> None:
+        symbol_ticker = symbol.ticker
+        
+        # Initialize state for this symbol if not exists
+        if symbol_ticker not in self.last_states:
+            self.last_states[symbol_ticker] = None
+
         lookback = self.window + 1
-        data = ctx.data.get(self.symbol, ["close"], lookback=lookback, at=ctx.now)
+        data = ctx.data.get(symbol_ticker, ["close"], lookback=lookback, at=ctx.now)
         closes = data.get("close", [])
         if len(closes) < lookback:
             return
@@ -37,19 +44,20 @@ class RateOfChange(Strategy):
         else:
             state = "flat"
 
-        if self.last_state is None:
-            self.last_state = state
+        if self.last_states[symbol_ticker] is None:
+            self.last_states[symbol_ticker] = state
             return
 
-        if state != self.last_state:
+        if state != self.last_states[symbol_ticker]:
             if state == "long":
-                ctx.order(self.symbol, self.position_size, side="BUY", type="MKT", tag="roc_long")
+                ctx.order(symbol_ticker, self.position_size, side="BUY", type="MKT", tag=f"roc_long_{symbol_ticker}")
             elif state == "short":
-                ctx.order(self.symbol, self.position_size, side="SELL", type="MKT", tag="roc_short")
+                ctx.order(symbol_ticker, self.position_size, side="SELL", type="MKT", tag=f"roc_short_{symbol_ticker}")
             else:
-                side = "SELL" if self.last_state == "long" else "BUY"
-                ctx.order(self.symbol, self.position_size, side=side, type="MKT", tag="roc_flatten")
-            self.last_state = state
+                side = "SELL" if self.last_states[symbol_ticker] == "long" else "BUY"
+                ctx.order(symbol_ticker, self.position_size, side=side, type="MKT", tag=f"roc_flatten_{symbol_ticker}")
+            self.last_states[symbol_ticker] = state
 
     def on_end(self, ctx: Context) -> None:
-        ctx.log.info("RateOfChange finished for %s", self.symbol)
+        ctx.log.info("RateOfChange finished")
+        super().on_end(ctx)

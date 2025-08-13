@@ -68,7 +68,7 @@ if __name__ == "__main__":
         "--end",
         datetime.now(timezone.utc).date().isoformat() + "T00:00:00+00:00",
         "--bars-csv",
-        "/data/bars.csv",
+        "data/bars.csv",
         "--exchange",
         ex,
     ]
