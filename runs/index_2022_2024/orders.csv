@@ -1,0 +1,6 @@
+ts,order_id,symbol_id,side,quantity,type,tif,limit_price,state
+2022-01-03T21:00:00Z,index_buy_AAPL,1,BUY,100,MKT,DAY,,NEW
+2023-01-03T21:00:00Z,index_sell_AAPL,1,SELL,100,MKT,DAY,,NEW
+2023-01-03T21:00:00Z,index_rebalance_AAPL,1,BUY,100,MKT,DAY,,NEW
+2024-01-03T21:00:00Z,index_sell_AAPL,1,SELL,100,MKT,DAY,,NEW
+2024-01-03T21:00:00Z,index_rebalance_AAPL,1,BUY,100,MKT,DAY,,NEW

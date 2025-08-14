@@ -1,0 +1,15 @@
+{
+  "run_id": "run_1755176573_519660",
+  "timestamp": "2025-08-14T13:03:55.169621Z",
+  "git_sha": "716aa48cea7582721379502644f367832be3aaf2",
+  "params_hash": "c28db0837a47915466134bc9627a05293dc7f3467a4d05c6de0e2d34fad4515a",
+  "params": {
+    "strategy": "RandomBaseline",
+    "start": "2022-01-03T00:00:00Z",
+    "end": "2024-12-30T23:59:59Z",
+    "base_currency": "EUR",
+    "costs_yaml_path": "quant/data/cost_profiles.yml",
+    "seed": null,
+    "starting_cash": 100000.0
+  }
+}

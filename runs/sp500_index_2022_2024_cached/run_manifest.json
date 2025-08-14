@@ -1,0 +1,15 @@
+{
+  "run_id": "run_1755186613_995267",
+  "timestamp": "2025-08-14T15:50:32.538731Z",
+  "git_sha": "716aa48cea7582721379502644f367832be3aaf2",
+  "params_hash": "5683e4a7fd9df950443989c76c4c227ed420cbe71deb381a34ce59e0a223a058",
+  "params": {
+    "strategy": "IndexStrategy",
+    "start": "2022-01-03T00:00:00Z",
+    "end": "2024-12-30T23:59:59Z",
+    "base_currency": "EUR",
+    "costs_yaml_path": "quant/data/cost_profiles.yml",
+    "seed": null,
+    "starting_cash": 100000.0
+  }
+}
