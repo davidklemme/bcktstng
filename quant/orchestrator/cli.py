@@ -25,19 +25,35 @@ from ..data.fx_rate_fetcher import FxRateFetcher
 app = typer.Typer(help="Quant orchestration CLI")
 
 
-def _load_dummy_data_if_needed(symbols_db: Optional[Path], fx_db: Optional[Path], settings):
-    """Load dummy data into in-memory databases if needed."""
+def _load_data_if_needed(symbols_db: Optional[Path], fx_db: Optional[Path], settings):
+    """Load data into in-memory databases if needed."""
+    symbols_engine = None
+    fx_engine = None
+    
+    # Handle symbols database
     if str(symbols_db or settings.symbols_db_path) == ":memory:":
         from ..data.symbols_repository import load_symbols_csv_to_db
+        symbols_engine = create_sqlite_engine(":memory:")
+        # Load actual symbols data from comprehensive_symbols.csv
+        symbols_csv = Path("quant/data/comprehensive_symbols.csv")
+        if symbols_csv.exists():
+            load_symbols_csv_to_db(str(symbols_csv), symbols_engine)
+    
+    # Handle FX database
+    if str(fx_db or settings.fx_db_path) == ":memory:":
         from ..data.fx_repository import load_fx_csv_to_db
-        dummy_data_dir = Path("quant/data/dummy")
-        if dummy_data_dir.exists():
-            symbols_engine = create_sqlite_engine(":memory:")
-            fx_engine = create_sqlite_engine(":memory:")
-            load_symbols_csv_to_db(str(dummy_data_dir / "symbols.csv"), symbols_engine)
-            load_fx_csv_to_db(str(dummy_data_dir / "fx.csv"), fx_engine)
-            return symbols_engine, fx_engine
-    return None, None
+        fx_engine = create_sqlite_engine(":memory:")
+        # Load actual FX data from fx_rates.csv
+        fx_csv = Path("quant/data/fx_rates.csv")
+        if fx_csv.exists():
+            load_fx_csv_to_db(str(fx_csv), fx_engine)
+    elif fx_db and fx_db.suffix == '.csv':
+        # Load FX data from provided CSV file
+        from ..data.fx_repository import load_fx_csv_to_db
+        fx_engine = create_sqlite_engine(":memory:")
+        load_fx_csv_to_db(str(fx_db), fx_engine)
+    
+    return symbols_engine, fx_engine
 
 
 def _strategy_factory(name: str):
@@ -113,11 +129,12 @@ def run_backtest_cmd(
     symbols_engine = create_sqlite_engine(str(symbols_db or settings.symbols_db_path))
     fx_engine = create_sqlite_engine(str(fx_db or settings.fx_db_path))
 
-    # Load dummy data if using in-memory databases
-    dummy_symbols_engine, dummy_fx_engine = _load_dummy_data_if_needed(symbols_db, fx_db, settings)
-    if dummy_symbols_engine is not None:
-        symbols_engine = dummy_symbols_engine
-        fx_engine = dummy_fx_engine
+    # Load data if using in-memory databases
+    loaded_symbols_engine, loaded_fx_engine = _load_data_if_needed(symbols_db, fx_db, settings)
+    if loaded_symbols_engine is not None:
+        symbols_engine = loaded_symbols_engine
+    if loaded_fx_engine is not None:
+        fx_engine = loaded_fx_engine
 
     reader = PITDataReader(fx_engine, symbols_engine, bars_store)
 
@@ -775,14 +792,20 @@ def fetch_fx_rates(
     typer.echo(f"Failed pairs: {result['failed']}")
 
 
-@app.command("visualize-run")
-def visualize_run_cmd(
-	run_dir: Path = typer.Argument(..., help="Run directory containing equity.csv and orders.csv"),
-	out_path: Optional[Path] = typer.Option(None, help="PNG output path; defaults to <run_dir>/visualization.png"),
+@app.command("visualize")
+def visualize_cmd(
+	run_dirs: list[Path] = typer.Argument(..., help="Run directory(ies) to visualize"),
+	width: int = typer.Option(None, help="Width of ASCII chart in characters (auto-detected if not specified)"),
+	height: int = typer.Option(None, help="Height of ASCII chart in characters (auto-detected if not specified)"),
 ):
-	from ..ops.visualize import visualize_run
-	out = visualize_run(str(run_dir), str(out_path) if out_path is not None else None)
-	typer.echo(f"Visualization written to: {out}")
+	"""Generate ASCII art visualization for run directory(ies). Single run or comparison based on number of directories."""
+	if len(run_dirs) == 1:
+		from ..ops.visualize import visualize_run_ascii
+		ascii_chart = visualize_run_ascii(str(run_dirs[0]), width, height)
+	else:
+		from ..ops.visualize import visualize_runs_comparison
+		ascii_chart = visualize_runs_comparison([str(d) for d in run_dirs], width, height)
+	typer.echo(ascii_chart)
 
 
 if __name__ == "__main__":
