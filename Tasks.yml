@@ -5,8 +5,8 @@ roadmap:
     markets: ["US", "EU"]
     latencies: ["EOD", "minute (later)"]
     base_currency: "EUR"
-    interfaces_now: ["CLI", "HTTP (FastAPI)"]
-    interfaces_later: ["gRPC", "Prefect"]
+    interfaces_now: ["CLI"]
+    interfaces_later: ["Prefect"]
     parallelism: "multiprocessing"
   statuses_allowed: ["planned", "in_progress", "blocked", "done"]
 
@@ -511,3 +511,374 @@ epics:
             depends_on: [T203, T304, T305]
             acceptance_criteria:
               - "Docs build passes; examples run as documented."
+
+  - id: E10
+    title: Discovery: Fundamentals & Sector Stats (PIT)
+    status: planned
+    description: Point-in-time fundamentals ingestion, sector classification, medians, and baseline screener.
+    acceptance_criteria:
+      - "Point-in-time fundamentals (ratios and base statements) stored with snapshots."
+      - "Sector classification and rolling sector medians available."
+      - "Screener returns top-k by configured thresholds and percentiles."
+    features:
+      - id: E10-F1
+        title: Fundamentals Schema & Snapshots
+        status: planned
+        tasks:
+          - id: T901
+            title: Define schemas (income, balance, cashflow, ratios) + snapshot writer
+            status: planned
+            estimate: "1.5d"
+            depends_on: [T001]
+            acceptance_criteria:
+              - "PyArrow schemas defined; unit tests instantiate."
+              - "Snapshot writer enforces asof and PIT guards."
+      - id: E10-F2
+        title: Provider Integration (FMP/Tiingo)
+        status: planned
+        tasks:
+          - id: T902
+            title: Ingest core fields (PE, EV/EBITDA, FCF yield, Debt/EBITDA, ROIC, interest coverage)
+            status: planned
+            estimate: "2.0d"
+            acceptance_criteria:
+              - "Universe ≥ 1k US tickers ingested."
+              - "Null/negative earnings edge cases handled."
+          - id: T903
+            title: Sector classification and sector median calculators
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "Percentile vs sector computed per metric."
+      - id: E10-F3
+        title: Screener Engine v1
+        status: planned
+        tasks:
+          - id: T904
+            title: Universe/liquidity filters + threshold/percentile filters
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "Filters: regions, exchanges, min market cap, min ADDV."
+          - id: T905
+            title: Ranker and result writer (candidate list)
+            status: planned
+            estimate: "0.75d"
+            acceptance_criteria:
+              - "Top-k ranked with stored params and scores."
+
+  - id: E11
+    title: Discovery: Publications Ingestion & NLP
+    status: planned
+    description: Ingest SEC filings and transcripts; parse sections; compute tone, guidance deltas, and risk diffs.
+    acceptance_criteria:
+      - "EDGAR 10-K/10-Q/8-K fetched with metadata and stored."
+      - "MD&A and Risk Factors chunked and searchable."
+      - "Guidance vs consensus deltas and tone scores produced per filing/call."
+    features:
+      - id: E11-F1
+        title: EDGAR Fetcher & Store
+        status: planned
+        tasks:
+          - id: T906
+            title: Ingest 10-K/10-Q/8-K + metadata (CIK, filing date) and index
+            status: planned
+            estimate: "2.0d"
+            acceptance_criteria:
+              - "Retry/SLA and rate-limits respected; 100 symbol pilot."
+      - id: E11-F2
+        title: Parsing, Chunking, Embeddings
+        status: planned
+        tasks:
+          - id: T907
+            title: Section detector (MD&A, Risk) + chunking + pgvector index
+            status: planned
+            estimate: "1.5d"
+            acceptance_criteria:
+              - "Top-3 relevant chunks retrievable per query."
+      - id: E11-F3
+        title: Guidance, Risk Diffs, Tone
+        status: planned
+        tasks:
+          - id: T908
+            title: Guidance extractor and consensus delta baseline
+            status: planned
+            estimate: "1.5d"
+            acceptance_criteria:
+              - "Delta vs scraped consensus for pilot set."
+          - id: T909
+            title: Risk factor diffing across filings
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "Changed/new/removed risk items flagged."
+          - id: T910
+            title: FinBERT tone on MD&A and call Q&A sections
+            status: planned
+            estimate: "0.75d"
+            acceptance_criteria:
+              - "Tone score in [-1,1] with simple calibration."
+
+  - id: E12
+    title: Discovery: News Ingestion & Event Sentiment
+    status: planned
+    description: Ingest and score recent news with entity resolution, event tagging, and sentiment with time decay.
+    acceptance_criteria:
+      - "News for candidates (7–30d) ingested with dedup/entity tags."
+      - "Event taxonomy applied (M&A, downgrades, litigation, regulatory, product)."
+      - "Aggregate sentiment with half-life decay computed per instrument."
+    features:
+      - id: E12-F1
+        title: Provider Integration
+        status: planned
+        tasks:
+          - id: T911
+            title: Ingest Marketaux/Finnhub news (pilot) with pagination/retries
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "At least 30 days per symbol available."
+      - id: E12-F2
+        title: Entity/De-dup & Event Tagging
+        status: planned
+        tasks:
+          - id: T912
+            title: NER + clustering dedup + event classifier
+            status: planned
+            estimate: "1.5d"
+            acceptance_criteria:
+              - "Duplicate stories collapsed; events labeled."
+      - id: E12-F3
+        title: Sentiment & Decay Aggregation
+        status: planned
+        tasks:
+          - id: T913
+            title: FinBERT sentiment and half-life aggregation
+            status: planned
+            estimate: "0.75d"
+            acceptance_criteria:
+              - "Per-instrument sentiment score produced."
+
+  - id: E13
+    title: Discovery: Composite Scoring & Explainability
+    status: planned
+    description: Combine fundamentals, publications, and news into a composite score with hard gates and human-readable explanations.
+    acceptance_criteria:
+      - "Composite score computed with configurable weights."
+      - "Hard gates exclude high-risk cases; reasons recorded."
+      - "Explanations include numeric metrics, deltas, and news snippets."
+    features:
+      - id: E13-F1
+        title: Scoring & Gates
+        status: planned
+        tasks:
+          - id: T914
+            title: Implement composite scoring and gating per strategy template
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "Scores reproducible from stored inputs."
+      - id: E13-F2
+        title: Explainability Store
+        status: planned
+        tasks:
+          - id: T915
+            title: Persist candidate_explanations with references to docs/news
+            status: planned
+            estimate: "0.75d"
+            acceptance_criteria:
+              - "CLI explain command returns structured reasons."
+
+  - id: E14
+    title: Discovery: CLI Only
+    status: planned
+    description: Expose screening runs and explanations via CLI only (no HTTP/UI).
+    acceptance_criteria:
+      - "CLI command runs a screening strategy and returns a run_id."
+      - "CLI can print ranked candidates and show explanations for a ticker."
+    features:
+      - id: E14-F1
+        title: CLI Commands
+        status: planned
+        tasks:
+          - id: T916
+            title: Implement CLI: run-screener, show-results, explain
+            status: planned
+            estimate: "1.0d"
+            depends_on: [T904, T915]
+            acceptance_criteria:
+              - "Commands return expected output with exit codes and help."
+      - id: E14-F2
+        title: Strategy Templates
+        status: planned
+        tasks:
+          - id: T917
+            title: Prebuilt value_long_term template (CLI-selectable) with thresholds/weights validation
+            status: planned
+            estimate: "0.5d"
+            acceptance_criteria:
+              - "Template persisted; can run via CLI."
+
+  - id: E15
+    title: Discovery: Backtesting
+    status: planned
+    description: Point-in-time evaluation of screened portfolios on quarterly cadence.
+    acceptance_criteria:
+      - "Quarterly snapshots used; no leakage."
+      - "Metrics: hit rate, forward returns, drawdown."
+    features:
+      - id: E15-F1
+        title: Snapshot Runner
+        status: planned
+        tasks:
+          - id: T918
+            title: Build quarterly snapshot/backtest runner using research harness
+            status: planned
+            estimate: "1.0d"
+            depends_on: [T901, T904]
+            acceptance_criteria:
+              - "Artifacts written per run; reproducible."
+      - id: E15-F2
+        title: Backtest Metrics
+        status: planned
+        tasks:
+          - id: T919
+            title: Compute forward 3/6/12m returns and drawdown
+            status: planned
+            estimate: "0.75d"
+            acceptance_criteria:
+              - "CSV/JSON metrics persisted."
+
+  - id: E16
+    title: Discovery: Options Overlay
+    status: planned
+    description: Optional overlay recommendations (cash-secured puts, covered calls) for candidates.
+    acceptance_criteria:
+      - "Options chains ingested for selected symbols."
+      - "Overlay suggestions with breakeven and annualized yield."
+    features:
+      - id: E16-F1
+        title: Options Chain Ingestion
+        status: planned
+        tasks:
+          - id: T920
+            title: Ingest and cache options chains; compute IV vs HV
+            status: planned
+            estimate: "1.5d"
+            acceptance_criteria:
+              - "Chain coverage for ≥50 symbols."
+      - id: E16-F2
+        title: Overlay Recommender
+        status: planned
+        tasks:
+          - id: T921
+            title: Cash-secured puts (20–30 delta) and covered calls recommender
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "Output includes strike, premium, breakeven, APY."
+
+  - id: E17
+    title: Discovery: Orchestration & Alerts
+    status: planned
+    description: Nightly scheduling, webhooks, and alerting via n8n.
+    acceptance_criteria:
+      - "Nightly run; failures retried; alerts delivered."
+    features:
+      - id: E17-F1
+        title: n8n Workflow
+        status: planned
+        tasks:
+          - id: T922
+            title: Nightly run trigger + Slack/Email top-k
+            status: planned
+            estimate: "0.5d"
+            acceptance_criteria:
+              - "Workflow executes end-to-end."
+      - id: E17-F2
+        title: Webhooks & Retries
+        status: planned
+        tasks:
+          - id: T923
+            title: EDGAR webhook, HTTP retries, logging
+            status: planned
+            estimate: "0.5d"
+            acceptance_criteria:
+              - "Resilient to transient provider errors."
+
+  - id: E18
+    title: Discovery: SurrealDB Master Schema & Migration
+    status: planned
+    description: Adopt SurrealDB as the system-of-record with a unified master schema; migrate existing data and adjust all intake pipelines.
+    acceptance_criteria:
+      - "Unified SurrealDB schema covers instruments, fundamentals, filings, transcripts, news, options, and relationships."
+      - "All new ingestion writes to SurrealDB with PIT fields and lineage."
+      - "Existing CSV/SQLite data migrated to SurrealDB; CLI reads from SurrealDB."
+    features:
+      - id: E18-F1
+        title: SurrealDB Setup & Client
+        status: planned
+        tasks:
+          - id: T930
+            title: Provision local SurrealDB, Python client wrapper, health checks
+            status: planned
+            estimate: "0.5d"
+            acceptance_criteria:
+              - "DB starts via docker-compose; health CLI passes."
+      - id: E18-F2
+        title: Master Schema Design
+        status: planned
+        tasks:
+          - id: T931
+            title: Define schema for instruments, fundamentals (snapshots), filings (docs/chunks), transcripts, news (entities/events), options, and relations
+            status: planned
+            estimate: "1.5d"
+            depends_on: [T901, T906, T911]
+            acceptance_criteria:
+              - "Entity graphs express ticker↔CIK↔filings↔news events; PIT timestamps required."
+      - id: E18-F3
+        title: Ingestion Pipelines → SurrealDB
+        status: planned
+        tasks:
+          - id: T932
+            title: Adjust fundamentals ingestion to write snapshots into SurrealDB
+            status: planned
+            estimate: "0.75d"
+            depends_on: [T902, T931]
+            acceptance_criteria:
+              - "Upsert-by-asof; idempotent with lineage fields."
+          - id: T933
+            title: Adjust EDGAR/transcripts ingestion and embeddings to SurrealDB
+            status: planned
+            estimate: "1.0d"
+            depends_on: [T906, T907, T931]
+            acceptance_criteria:
+              - "Documents, chunks, and embedding metadata persisted."
+          - id: T934
+            title: Adjust news ingestion to SurrealDB with entities/events
+            status: planned
+            estimate: "0.75d"
+            depends_on: [T911, T912, T931]
+            acceptance_criteria:
+              - "Dedup clusters and event tags stored with refs."
+      - id: E18-F4
+        title: Data Migration
+        status: planned
+        tasks:
+          - id: T935
+            title: Migrate existing symbols/FX/bars/corp actions from CSV/SQLite to SurrealDB
+            status: planned
+            estimate: "1.0d"
+            acceptance_criteria:
+              - "Row counts reconcile; sample queries match prior outputs."
+      - id: E18-F5
+        title: Readers & Screener Refactor
+        status: planned
+        tasks:
+          - id: T936
+            title: Implement SurrealDB-backed reader for PIT symbols/fundamentals/bars/news/filings
+            status: planned
+            estimate: "1.5d"
+            depends_on: [T931, T932, T933, T934]
+            acceptance_criteria:
+              - "CLI screener runs using SurrealDB as primary source."
