@@ -1,0 +1,2 @@
+ts,order_id,symbol_id,price,quantity,venue,cost
+2022-01-03T21:00:00Z,sp500_buy_AAPL,1,178.9227195,100,XNAS,0.5

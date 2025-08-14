@@ -1,0 +1,2 @@
+ts,order_id,symbol_id,side,quantity,type,tif,limit_price,state
+2022-01-03T21:00:00Z,sp500_initial_AAPL,1,BUY,100,MKT,DAY,,NEW

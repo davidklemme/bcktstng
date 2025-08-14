@@ -19,6 +19,8 @@ from ..research.validation import make_walk_forward_folds, make_purged_kfold_fol
 from ..research.search import run_hyperparameter_search
 from ..strategies.simple.bollinger import BollingerBands
 from ..strategies.simple.roc import RateOfChange
+from ..strategies.simple.random_baseline import RandomBaseline
+from ..strategies.simple.index_strategy import IndexStrategy
 from ..data.stooq_data_fetcher import StooqDataFetcher
 from ..data.fx_rate_fetcher import FxRateFetcher
 
@@ -83,6 +85,24 @@ def _strategy_factory(name: str):
                 position_size=int(params.get("position_size", 100)),
             )
         return factory
+    if lname == "randombaseline":
+        def factory(params: dict):
+            return RandomBaseline(
+                position_size=int(params.get("position_size", 100)),
+                trade_probability=float(params.get("trade_probability", 0.1)),
+                max_positions=int(params.get("max_positions", 5)),
+                seed=int(params.get("seed", 42)) if params.get("seed") else None,
+            )
+        return factory
+    if lname == "index":
+        def factory(params: dict):
+            return IndexStrategy(
+                position_size=int(params.get("position_size", 100)),
+                rebalance_frequency=int(params.get("rebalance_frequency", 252)),
+                equal_weight=bool(params.get("equal_weight", True)),
+                max_positions=int(params.get("max_positions", 10)),
+            )
+        return factory
     raise ValueError(f"Unknown strategy: {name}")
 
 
@@ -145,6 +165,10 @@ def run_backtest_cmd(
         strat = BollingerBands()
     elif strategy_name.lower() == "roc":
         strat = RateOfChange()
+    elif strategy_name.lower() == "randombaseline":
+        strat = RandomBaseline()
+    elif strategy_name.lower() == "index":
+        strat = IndexStrategy()
     else:
         typer.echo(f"Unknown strategy: {strategy_name}")
         raise typer.Exit(code=2)
