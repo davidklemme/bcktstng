@@ -1,0 +1,15 @@
+{
+  "run_id": "run_1755204203_323718",
+  "timestamp": "2025-08-14T20:43:23.525824Z",
+  "git_sha": "a9d586f27c6e3f75a5d0fd517eeae79fe7325223",
+  "params_hash": "336a5915b356a9eceec33bbeccfdb663350720870234f4a8bfa62e50471214e5",
+  "params": {
+    "strategy": "BollingerBands",
+    "start": "2022-01-03T00:00:00Z",
+    "end": "2022-01-31T23:59:59Z",
+    "base_currency": "EUR",
+    "costs_yaml_path": "quant/data/cost_profiles.yml",
+    "seed": null,
+    "starting_cash": 100000.0
+  }
+}

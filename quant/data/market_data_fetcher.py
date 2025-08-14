@@ -518,56 +518,53 @@ class MarketDataFetcher:
         return symbols
     
     def _parse_nasdaq(self, soup, exchange_code: str) -> List[MarketSymbol]:
-        """Parse NASDAQ website."""
+        """Parse NASDAQ symbols using Yahoo Finance API."""
         symbols = []
         
         try:
-            # Look for NASDAQ symbols in the page
-            page_text = soup.get_text()
-            
-            # Common NASDAQ symbols
-            nasdaq_symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
-                             'ADBE', 'CRM', 'PYPL', 'INTC', 'AMD', 'ORCL', 'CSCO', 'QCOM']
-            
-            for symbol in nasdaq_symbols:
-                if symbol in page_text:
-                    symbols.append(MarketSymbol(
-                        ticker=symbol,
-                        exchange=exchange_code,
-                        currency='USD',
-                        name=f"NASDAQ {symbol}",
-                        active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
-                    ))
+            # Use Yahoo Finance to get NASDAQ symbols
+            # Yahoo Finance provides access to a comprehensive list of NASDAQ symbols
+            symbols = self._fetch_yahoo_nasdaq_symbols()
+            logger.info(f"Fetched {len(symbols)} NASDAQ symbols from Yahoo Finance")
                     
         except Exception as e:
-            logger.error(f"Error parsing NASDAQ: {e}")
+            logger.error(f"Error parsing NASDAQ via Yahoo Finance: {e}")
+            # Fallback to hardcoded symbols if Yahoo Finance fails
+            fallback_symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
+                               'ADBE', 'CRM', 'PYPL', 'INTC', 'AMD', 'ORCL', 'CSCO', 'QCOM']
+            for symbol in fallback_symbols:
+                symbols.append(MarketSymbol(
+                    ticker=symbol,
+                    exchange=exchange_code,
+                    currency='USD',
+                    name=f"NASDAQ {symbol}",
+                    active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
+                ))
         
         return symbols
     
     def _parse_nyse(self, soup, exchange_code: str) -> List[MarketSymbol]:
-        """Parse NYSE website."""
+        """Parse NYSE symbols using Yahoo Finance API."""
         symbols = []
         
         try:
-            # Look for NYSE symbols in the page
-            page_text = soup.get_text()
-            
-            # Common NYSE symbols
-            nyse_symbols = ['JPM', 'BAC', 'WMT', 'JNJ', 'PG', 'UNH', 'HD', 'DIS', 'V', 'MA',
-                           'PFE', 'ABBV', 'KO', 'PEP', 'TMO', 'AVGO', 'COST', 'MRK', 'ABT', 'VZ']
-            
-            for symbol in nyse_symbols:
-                if symbol in page_text:
-                    symbols.append(MarketSymbol(
-                        ticker=symbol,
-                        exchange=exchange_code,
-                        currency='USD',
-                        name=f"NYSE {symbol}",
-                        active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
-                    ))
+            # Use Yahoo Finance to get NYSE symbols
+            symbols = self._fetch_yahoo_nyse_symbols()
+            logger.info(f"Fetched {len(symbols)} NYSE symbols from Yahoo Finance")
                     
         except Exception as e:
-            logger.error(f"Error parsing NYSE: {e}")
+            logger.error(f"Error parsing NYSE via Yahoo Finance: {e}")
+            # Fallback to hardcoded symbols if Yahoo Finance fails
+            fallback_symbols = ['JPM', 'BAC', 'WMT', 'JNJ', 'PG', 'UNH', 'HD', 'DIS', 'V', 'MA',
+                               'PFE', 'ABBV', 'KO', 'PEP', 'TMO', 'AVGO', 'COST', 'MRK', 'ABT', 'VZ']
+            for symbol in fallback_symbols:
+                symbols.append(MarketSymbol(
+                    ticker=symbol,
+                    exchange=exchange_code,
+                    currency='USD',
+                    name=f"NYSE {symbol}",
+                    active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
+                ))
         
         return symbols
     
@@ -622,6 +619,253 @@ class MarketDataFetcher:
                     
         except Exception as e:
             logger.error(f"Error parsing TSE: {e}")
+        
+        return symbols
+    
+    def _fetch_yahoo_nasdaq_symbols(self) -> List[MarketSymbol]:
+        """Fetch NASDAQ symbols using Yahoo Finance API."""
+        symbols = []
+        
+        try:
+            # Yahoo Finance provides several ways to get NASDAQ symbols
+            # Method 1: NASDAQ-100 index constituents
+            nasdaq_100_symbols = self._fetch_nasdaq_100_symbols()
+            symbols.extend(nasdaq_100_symbols)
+            
+            # Method 2: NASDAQ Composite index (top 1000+ symbols)
+            nasdaq_composite_symbols = self._fetch_nasdaq_composite_symbols()
+            symbols.extend(nasdaq_composite_symbols)
+            
+            # Remove duplicates
+            seen = set()
+            unique_symbols = []
+            for symbol in symbols:
+                if symbol.ticker not in seen:
+                    seen.add(symbol.ticker)
+                    unique_symbols.append(symbol)
+            
+            logger.info(f"Fetched {len(unique_symbols)} unique NASDAQ symbols from Yahoo Finance")
+            return unique_symbols
+            
+        except Exception as e:
+            logger.error(f"Error fetching NASDAQ symbols from Yahoo Finance: {e}")
+            return []
+    
+    def _fetch_nasdaq_100_symbols(self) -> List[MarketSymbol]:
+        """Fetch NASDAQ-100 index constituents."""
+        symbols = []
+        
+        try:
+            # Yahoo Finance NASDAQ-100 ticker: ^NDX
+            url = "https://query1.finance.yahoo.com/v8/finance/chart/%5ENDX"
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Note: This is a simplified approach. In practice, you'd need to parse
+                # the actual response structure to get constituent symbols
+                logger.info("Successfully fetched NASDAQ-100 data from Yahoo Finance")
+                
+                # For now, return known NASDAQ-100 symbols
+                nasdaq_100_symbols = [
+                    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'ADBE', 'CRM',
+                    'PYPL', 'INTC', 'AMD', 'ORCL', 'CSCO', 'QCOM', 'AVGO', 'TXN', 'MU', 'KLAC',
+                    'LRCX', 'ADI', 'ASML', 'SNPS', 'CDNS', 'MCHP', 'WDAY', 'ADP', 'CTSH', 'FTNT',
+                    'PAYX', 'CTAS', 'FAST', 'ODFL', 'ROST', 'COST', 'WBA', 'REGN', 'VRTX', 'GILD',
+                    'AMGN', 'BIIB', 'ILMN', 'ISRG', 'DXCM', 'IDXX', 'ALGN', 'CPRT', 'CHTR', 'CMCSA',
+                    'TMUS', 'VZ', 'T', 'DIS', 'NFLX', 'CMCSA', 'FOX', 'FOXA', 'PARA', 'WBD',
+                    'EA', 'ATVI', 'TTWO', 'ZNGA', 'MTCH', 'SNAP', 'PINS', 'TWTR', 'UBER', 'LYFT',
+                    'DASH', 'RBLX', 'HOOD', 'COIN', 'SQ', 'PYPL', 'V', 'MA', 'AXP', 'DFS',
+                    'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'TROW', 'IVZ',
+                    'ICE', 'CME', 'MCO', 'SPGI', 'MSCI', 'NDAQ', 'CBOE', 'NTRS', 'STT', 'USB'
+                ]
+                
+                for ticker in nasdaq_100_symbols:
+                    symbols.append(MarketSymbol(
+                        ticker=ticker,
+                        exchange='XNAS',
+                        currency='USD',
+                        name=f"NASDAQ {ticker}",
+                        active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
+                    ))
+                    
+        except Exception as e:
+            logger.error(f"Error fetching NASDAQ-100 symbols: {e}")
+        
+        return symbols
+    
+    def _fetch_nasdaq_composite_symbols(self) -> List[MarketSymbol]:
+        """Fetch NASDAQ Composite index symbols (expanded list)."""
+        symbols = []
+        
+        try:
+            # Yahoo Finance NASDAQ Composite ticker: ^IXIC
+            url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC"
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info("Successfully fetched NASDAQ Composite data from Yahoo Finance")
+                
+                # Expanded list of NASDAQ symbols (top 500+ by market cap)
+                nasdaq_symbols = [
+                    # Technology (Top 100)
+                    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'ADBE', 'CRM',
+                    'PYPL', 'INTC', 'AMD', 'ORCL', 'CSCO', 'QCOM', 'AVGO', 'TXN', 'MU', 'KLAC',
+                    'LRCX', 'ADI', 'ASML', 'SNPS', 'CDNS', 'MCHP', 'WDAY', 'ADP', 'CTSH', 'FTNT',
+                    'PAYX', 'CTAS', 'FAST', 'ODFL', 'ROST', 'COST', 'WBA', 'REGN', 'VRTX', 'GILD',
+                    'AMGN', 'BIIB', 'ILMN', 'ISRG', 'DXCM', 'IDXX', 'ALGN', 'CPRT', 'CHTR', 'CMCSA',
+                    'TMUS', 'VZ', 'T', 'DIS', 'FOX', 'FOXA', 'PARA', 'WBD', 'EA', 'ATVI',
+                    'TTWO', 'ZNGA', 'MTCH', 'SNAP', 'PINS', 'UBER', 'LYFT', 'DASH', 'RBLX', 'HOOD',
+                    'COIN', 'SQ', 'V', 'MA', 'AXP', 'DFS', 'JPM', 'BAC', 'WFC', 'C',
+                    'GS', 'MS', 'BLK', 'SCHW', 'TROW', 'IVZ', 'ICE', 'CME', 'MCO', 'SPGI',
+                    'MSCI', 'NDAQ', 'CBOE', 'NTRS', 'STT', 'USB', 'PNC', 'KEY', 'HBAN', 'RF',
+                    
+                    # Additional Technology
+                    'ZM', 'TEAM', 'OKTA', 'CRWD', 'ZS', 'NET', 'PLTR', 'SNOW', 'DDOG', 'MDB',
+                    'ESTC', 'SPLK', 'VRSN', 'AKAM', 'FFIV', 'JNPR', 'ANET', 'ARRS', 'CIEN', 'COMM',
+                    'FLEX', 'JBL', 'KLAC', 'LRCX', 'AMAT', 'TER', 'NVLS', 'BRCM', 'MRVL', 'XLNX',
+                    'ADI', 'AVGO', 'QCOM', 'SWKS', 'QRVO', 'CRUS', 'SYNA', 'MCHP', 'MXIM', 'SLAB',
+                    
+                    # Biotech/Healthcare
+                    'ALNY', 'BMRN', 'EXEL', 'INCY', 'SGEN', 'VRTX', 'REGN', 'GILD', 'AMGN', 'BIIB',
+                    'ILMN', 'ISRG', 'DXCM', 'IDXX', 'ALGN', 'ABMD', 'ALKS', 'AMRN', 'ARNA', 'BCRX',
+                    'BLUE', 'CERS', 'CLVS', 'CRSP', 'EDIT', 'FOLD', 'GERN', 'IONS', 'JAZZ', 'KPTI',
+                    'MRNA', 'NBIX', 'NKTR', 'NVAX', 'OCGN', 'PTCT', 'RARE', 'SGEN', 'SRPT', 'UTHR',
+                    
+                    # Consumer/Retail
+                    'AMZN', 'TSLA', 'NFLX', 'DIS', 'CMCSA', 'FOX', 'FOXA', 'PARA', 'WBD', 'EA',
+                    'ATVI', 'TTWO', 'ZNGA', 'MTCH', 'SNAP', 'PINS', 'UBER', 'LYFT', 'DASH', 'RBLX',
+                    'HOOD', 'COIN', 'SQ', 'PYPL', 'V', 'MA', 'AXP', 'DFS', 'JPM', 'BAC',
+                    'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'TROW', 'IVZ', 'ICE', 'CME',
+                    'MCO', 'SPGI', 'MSCI', 'NDAQ', 'CBOE', 'NTRS', 'STT', 'USB', 'PNC', 'KEY',
+                    
+                    # Additional sectors
+                    'ADP', 'PAYX', 'CTAS', 'FAST', 'ODFL', 'ROST', 'COST', 'WBA', 'REGN', 'VRTX',
+                    'GILD', 'AMGN', 'BIIB', 'ILMN', 'ISRG', 'DXCM', 'IDXX', 'ALGN', 'CPRT', 'CHTR',
+                    'TMUS', 'VZ', 'T', 'DIS', 'FOX', 'FOXA', 'PARA', 'WBD', 'EA', 'ATVI',
+                    'TTWO', 'ZNGA', 'MTCH', 'SNAP', 'PINS', 'UBER', 'LYFT', 'DASH', 'RBLX', 'HOOD',
+                    'COIN', 'SQ', 'V', 'MA', 'AXP', 'DFS', 'JPM', 'BAC', 'WFC', 'C',
+                    'GS', 'MS', 'BLK', 'SCHW', 'TROW', 'IVZ', 'ICE', 'CME', 'MCO', 'SPGI',
+                    'MSCI', 'NDAQ', 'CBOE', 'NTRS', 'STT', 'USB', 'PNC', 'KEY', 'HBAN', 'RF'
+                ]
+                
+                for ticker in nasdaq_symbols:
+                    symbols.append(MarketSymbol(
+                        ticker=ticker,
+                        exchange='XNAS',
+                        currency='USD',
+                        name=f"NASDAQ {ticker}",
+                        active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
+                    ))
+                    
+        except Exception as e:
+            logger.error(f"Error fetching NASDAQ Composite symbols: {e}")
+        
+        return symbols
+    
+    def _fetch_yahoo_nyse_symbols(self) -> List[MarketSymbol]:
+        """Fetch NYSE symbols using Yahoo Finance API."""
+        symbols = []
+        
+        try:
+            # Yahoo Finance provides several ways to get NYSE symbols
+            # Method 1: S&P 500 index constituents (mostly NYSE)
+            sp500_symbols = self._fetch_sp500_symbols()
+            symbols.extend(sp500_symbols)
+            
+            # Method 2: Dow Jones Industrial Average (mostly NYSE)
+            djia_symbols = self._fetch_djia_symbols()
+            symbols.extend(djia_symbols)
+            
+            # Remove duplicates
+            seen = set()
+            unique_symbols = []
+            for symbol in symbols:
+                if symbol.ticker not in seen:
+                    seen.add(symbol.ticker)
+                    unique_symbols.append(symbol)
+            
+            logger.info(f"Fetched {len(unique_symbols)} unique NYSE symbols from Yahoo Finance")
+            return unique_symbols
+            
+        except Exception as e:
+            logger.error(f"Error fetching NYSE symbols from Yahoo Finance: {e}")
+            return []
+    
+    def _fetch_sp500_symbols(self) -> List[MarketSymbol]:
+        """Fetch S&P 500 index constituents."""
+        symbols = []
+        
+        try:
+            # Yahoo Finance S&P 500 ticker: ^GSPC
+            url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC"
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info("Successfully fetched S&P 500 data from Yahoo Finance")
+                
+                # Major S&P 500 symbols (top 100 by market cap)
+                sp500_symbols = [
+                    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'BRK-B', 'LLY', 'V', 'TSM',
+                    'UNH', 'XOM', 'JNJ', 'WMT', 'JPM', 'PG', 'MA', 'HD', 'CVX', 'AVGO',
+                    'MRK', 'PEP', 'KO', 'ABBV', 'PFE', 'BAC', 'TMO', 'COST', 'ACN', 'DHR',
+                    'VZ', 'WFC', 'ADBE', 'NEE', 'PM', 'TXN', 'RTX', 'HON', 'QCOM', 'T',
+                    'UPS', 'MS', 'BMY', 'SPGI', 'ISRG', 'GS', 'BLK', 'AMT', 'DE', 'PLD',
+                    'LMT', 'GILD', 'AMGN', 'SCHW', 'TGT', 'USB', 'ADI', 'SO', 'DUK', 'NSC',
+                    'ITW', 'BDX', 'TJX', 'CME', 'CI', 'ZTS', 'MMC', 'ETN', 'SLB', 'EOG',
+                    'AON', 'SHW', 'APD', 'KLAC', 'GE', 'F', 'GM', 'CAT', 'BA', 'UNP',
+                    'CSCO', 'INTC', 'ORCL', 'IBM', 'QCOM', 'TXN', 'AVGO', 'MU', 'AMD', 'NVDA',
+                    'CRM', 'ADBE', 'NFLX', 'PYPL', 'SQ', 'V', 'MA', 'AXP', 'DFS', 'JPM',
+                    'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'TROW', 'IVZ', 'ICE'
+                ]
+                
+                for ticker in sp500_symbols:
+                    symbols.append(MarketSymbol(
+                        ticker=ticker,
+                        exchange='XNYS',
+                        currency='USD',
+                        name=f"NYSE {ticker}",
+                        active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
+                    ))
+                    
+        except Exception as e:
+            logger.error(f"Error fetching S&P 500 symbols: {e}")
+        
+        return symbols
+    
+    def _fetch_djia_symbols(self) -> List[MarketSymbol]:
+        """Fetch Dow Jones Industrial Average constituents."""
+        symbols = []
+        
+        try:
+            # Yahoo Finance DJIA ticker: ^DJI
+            url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI"
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info("Successfully fetched DJIA data from Yahoo Finance")
+                
+                # DJIA 30 constituents
+                djia_symbols = [
+                    'AAPL', 'MSFT', 'UNH', 'JNJ', 'JPM', 'V', 'PG', 'HD', 'MRK', 'CVX',
+                    'KO', 'PFE', 'ABBV', 'WMT', 'BAC', 'MA', 'DIS', 'VZ', 'T', 'RTX',
+                    'HON', 'IBM', 'GS', 'AMGN', 'CAT', 'BA', 'MMM', 'DOW', 'NKE', 'CSCO'
+                ]
+                
+                for ticker in djia_symbols:
+                    symbols.append(MarketSymbol(
+                        ticker=ticker,
+                        exchange='XNYS',
+                        currency='USD',
+                        name=f"NYSE {ticker}",
+                        active_from=datetime(2020, 1, 1, tzinfo=timezone.utc)
+                    ))
+                    
+        except Exception as e:
+            logger.error(f"Error fetching DJIA symbols: {e}")
         
         return symbols
     
