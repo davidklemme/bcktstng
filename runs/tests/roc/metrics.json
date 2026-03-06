@@ -1,7 +1,14 @@
 {
-  "final_equity_eur": 872.6325873,
+  "final_equity_eur": 873.05182857,
   "start_equity_eur": 0.0,
   "return": 0.0,
+  "sharpe_ratio": -3.0476,
+  "max_drawdown": -0.609526,
+  "max_drawdown_duration_bars": 5,
+  "win_rate": 0.5,
+  "profit_factor": 0.996,
+  "avg_trade_pnl": -26.0729,
   "num_orders": 12,
-  "num_fills": 12
+  "num_fills": 12,
+  "num_trades": 12
 }
