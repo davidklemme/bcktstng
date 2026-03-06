@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import random
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..common.utils import to_utc as _to_utc
 from ..data.bars_loader import BarRow
 from ..data.pit_reader import PITDataReader, BarsStore
 from ..data.symbols_repository import SymbolRow
@@ -32,12 +34,6 @@ class BacktestResult:
     fills: List[Dict[str, Any]]
     positions: List[Dict[str, Any]]
     out_dir: Path
-
-
-def _to_utc(ts: datetime) -> datetime:
-    if ts.tzinfo is None:
-        return ts.replace(tzinfo=timezone.utc)
-    return ts.astimezone(timezone.utc)
 
 
 def _unique_times_between(store: BarsStore, start: datetime, end: datetime) -> List[datetime]:
@@ -82,6 +78,80 @@ def _quote_from_bar(bar: BarRow) -> Quote:
     return Quote(bid=bid, ask=ask)
 
 
+def _compute_metrics(equity_points: List[Dict[str, Any]], fills_out: List[Dict[str, Any]], orders_out: List[Dict[str, Any]]) -> Dict[str, Any]:
+    final_equity = equity_points[-1]["equity_eur"] if equity_points else 0.0
+    start_equity = equity_points[0]["equity_eur"] if equity_points else 0.0
+    ret = (final_equity / start_equity - 1.0) if start_equity not in (0.0, 0) else 0.0
+
+    # Compute daily returns for Sharpe
+    equities = [p["equity_eur"] for p in equity_points]
+    daily_returns: List[float] = []
+    for i in range(1, len(equities)):
+        if equities[i - 1] != 0:
+            daily_returns.append(equities[i] / equities[i - 1] - 1.0)
+
+    # Sharpe ratio (rf=0, annualized with sqrt(252))
+    sharpe = 0.0
+    if len(daily_returns) > 1:
+        avg_ret = sum(daily_returns) / len(daily_returns)
+        var = sum((r - avg_ret) ** 2 for r in daily_returns) / (len(daily_returns) - 1)
+        std = math.sqrt(var) if var > 0 else 0.0
+        if std > 0:
+            sharpe = (avg_ret / std) * math.sqrt(252)
+
+    # Max drawdown
+    max_dd = 0.0
+    max_dd_duration = 0
+    if equities:
+        peak = equities[0]
+        dd_start = 0
+        for i, eq in enumerate(equities):
+            if eq > peak:
+                peak = eq
+                dd_start = i
+            if peak > 0:
+                dd = (eq / peak) - 1.0
+                if dd < max_dd:
+                    max_dd = dd
+                    max_dd_duration = i - dd_start
+
+    # Win rate and profit factor from fills
+    # Track per-order realized P&L using fill prices vs avg entry
+    trade_pnls: List[float] = []
+    # Simple approach: group fills by order, compute notional P&L per order
+    for order_rec in orders_out:
+        order_fills = [f for f in fills_out if f["order_id"] == order_rec["order_id"]]
+        if not order_fills:
+            continue
+        total_notional = sum(f["price"] * f["quantity"] for f in order_fills)
+        # P&L is approximate; positive for sells, negative for buys (raw notional)
+        sign = -1.0 if order_rec["side"] == "BUY" else 1.0
+        trade_pnls.append(sign * total_notional)
+
+    wins = [p for p in trade_pnls if p > 0]
+    losses = [p for p in trade_pnls if p < 0]
+    win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
+    gross_profit = sum(wins) if wins else 0.0
+    gross_loss = abs(sum(losses)) if losses else 0.0
+    profit_factor = min(gross_profit / gross_loss, 999.0) if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
+    avg_trade_pnl = sum(trade_pnls) / len(trade_pnls) if trade_pnls else 0.0
+
+    return {
+        "final_equity_eur": final_equity,
+        "start_equity_eur": start_equity,
+        "return": ret,
+        "sharpe_ratio": round(sharpe, 4),
+        "max_drawdown": round(max_dd, 6),
+        "max_drawdown_duration_bars": max_dd_duration,
+        "win_rate": round(win_rate, 4),
+        "profit_factor": round(profit_factor, 4),
+        "avg_trade_pnl": round(avg_trade_pnl, 4),
+        "num_orders": len(orders_out),
+        "num_fills": len(fills_out),
+        "num_trades": len(trade_pnls),
+    }
+
+
 def run_backtest(
     *,
     strategy: Any,
@@ -116,8 +186,6 @@ def run_backtest(
         portfolio.deposit(float(starting_cash), base_currency)
 
     # Prepare context
-    order_api = strategy.order_api if hasattr(strategy, "order_api") else None
-    # Initialize context compatible with Strategy.Context
     from ..sdk.strategy import Context as StrategyContext, _DataAPI, _OrderAPI, _RiskAPI
 
     data_api = _DataAPI(reader)
@@ -157,7 +225,6 @@ def run_backtest(
         # Metrics: one step processed
         events_total.labels(source="backtest").inc()
 
-        # Optionally track wall time of the step
         import time as _time
         _t0 = _time.perf_counter()
 
@@ -168,66 +235,86 @@ def run_backtest(
         pending: List[Order] = list(ctx.order_api._orders)
         ctx.order_api._orders.clear()
 
+        # A7: Filter out canceled orders
+        canceled_ids = set(ctx.order_api._canceled)
+        ctx.order_api._canceled.clear()
+        pending = [o for o in pending if o.id not in canceled_ids]
+
         for order in pending:
             orders_total.inc()
+
+            # A5: Acknowledge order (transition NEW -> WORKING)
+            order.acknowledge()
+
             # Find bar for this symbol at ts
             bar_rows = bars_at_time.get(ts, [])
             bar_for_symbol: Optional[BarRow] = next((b for b in bar_rows if b.symbol_id == order.symbol_id), None)
             if bar_for_symbol is None:
-                # No trade for this symbol at this timestamp
+                order.handle_end_of_cycle(0)
+                orders_out.append(_order_record(order, ts))
                 continue
+
             quote = _quote_from_bar(bar_for_symbol)
             venue = venue_by_symbol.get(order.symbol_id, "UNKNOWN")
-            available_liquidity = max(int(bar_for_symbol.volume), order.quantity)
+
+            # B4: Pre-trade risk check using quote mid as price estimate
+            sym_meta = symbols_by_id.get(order.symbol_id)
+            currency = sym_meta.currency if sym_meta else base_currency
+            allowed, reason = risk_api.manager.check(
+                portfolio, order.symbol_id, currency,
+                quote.mid, order.quantity, fx_rate_to_eur=1.0,
+            )
+            if not allowed:
+                order.reject()
+                logger.info("Order %s rejected by risk: %s", order.id, reason)
+                orders_out.append(_order_record(order, ts))
+                continue
+
+            # A8: Use actual bar volume, not max(volume, qty)
+            available_liquidity = int(bar_for_symbol.volume)
             fills, cost_total = exec_sim.simulate(order, quote, venue, available_liquidity, ts=ts)
 
             # Apply fills to portfolio
-            sym_meta = symbols_by_id.get(order.symbol_id)
-            currency = sym_meta.currency if sym_meta else base_currency
-            for f in fills:
+            total_fill_qty = sum(fill.quantity for fill in fills)
+            for fill in fills:
                 fills_total.inc()
+                # A5: Update order state machine
+                order.add_fill(fill.quantity)
                 side = order.side.value
-                portfolio.apply_fill(order.symbol_id, currency, side, f.quantity, f.price)
+                portfolio.apply_fill(order.symbol_id, currency, side, fill.quantity, fill.price)
                 # Slippage vs mid in bps
-                mid = (quote.bid + quote.ask) / 2.0
+                mid = quote.mid
                 if mid > 0:
-                    bps = abs((f.price - mid) / mid) * 10000.0
+                    bps = abs((fill.price - mid) / mid) * 10000.0
                     fill_slippage_bps.observe(bps)
-                # Calculate cost per fill (proportional to fill quantity)
-                cost_per_fill = (cost_total / sum(f.quantity for f in fills)) * f.quantity if fills else 0.0
+                # Cost per fill (proportional)
+                fill_cost = (cost_total * fill.quantity / total_fill_qty) if total_fill_qty > 0 else 0.0
                 fills_out.append(
                     {
                         "ts": ts,
                         "order_id": order.id,
                         "symbol_id": order.symbol_id,
-                        "price": f.price,
-                        "quantity": f.quantity,
+                        "price": fill.price,
+                        "quantity": fill.quantity,
                         "venue": venue,
-                        "cost": cost_per_fill,
+                        "cost": fill_cost,
                     }
                 )
-            if cost_total and cost_total != 0.0:
-                portfolio.apply_transaction_cost(base_currency, cost_total)
 
-            orders_out.append(
-                {
-                    "ts": ts,
-                    "order_id": order.id,
-                    "symbol_id": order.symbol_id,
-                    "side": order.side.value,
-                    "quantity": order.quantity,
-                    "type": order.type.value,
-                    "tif": order.tif.value,
-                    "limit_price": order.limit_price,
-                    "state": order.state.value,
-                }
-            )
+            # A6: Apply transaction cost in instrument currency, not base_currency
+            if cost_total and cost_total != 0.0:
+                portfolio.apply_transaction_cost(currency, cost_total)
+
+            # A5: Handle end of cycle for IOC/FOK semantics
+            order.handle_end_of_cycle(available_liquidity)
+
+            orders_out.append(_order_record(order, ts))
 
         # Mark portfolio and record equity
         mark_prices: Dict[int, float] = {}
         for b in bars_at_time.get(ts, []):
             mark_prices[b.symbol_id] = b.close
-        equity_eur = portfolio.total_value_eur(ts, mark_prices, reader._fx_engine)  # type: ignore[attr-defined]
+        equity_eur = portfolio.total_value_eur(ts, mark_prices, reader.fx_engine)
         equity_points.append({"ts": ts, "equity_eur": equity_eur})
 
         # Snapshot positions
@@ -249,17 +336,8 @@ def run_backtest(
     if hasattr(strategy, "on_end"):
         strategy.on_end(ctx)
 
-    # Metrics (simple)
-    final_equity = equity_points[-1]["equity_eur"] if equity_points else 0.0
-    start_equity = equity_points[0]["equity_eur"] if equity_points else 0.0
-    ret = (final_equity / start_equity - 1.0) if start_equity not in (0.0, 0) else 0.0
-    metrics = {
-        "final_equity_eur": final_equity,
-        "start_equity_eur": start_equity,
-        "return": ret,
-        "num_orders": len(orders_out),
-        "num_fills": len(fills_out),
-    }
+    # B3: Comprehensive metrics
+    metrics = _compute_metrics(equity_points, fills_out, orders_out)
 
     # Artifacts and manifest
     out_dir_path = Path(out_dir) if out_dir else Path("./runs") / run_id
@@ -306,3 +384,17 @@ def run_backtest(
         positions=positions_out,
         out_dir=out_dir_path,
     )
+
+
+def _order_record(order: Order, ts: datetime) -> Dict[str, Any]:
+    return {
+        "ts": ts,
+        "order_id": order.id,
+        "symbol_id": order.symbol_id,
+        "side": order.side.value,
+        "quantity": order.quantity,
+        "type": order.type.value,
+        "tif": order.tif.value,
+        "limit_price": order.limit_price,
+        "state": order.state.value,
+    }

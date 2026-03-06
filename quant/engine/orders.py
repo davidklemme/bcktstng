@@ -60,6 +60,8 @@ class Order:
     def add_fill(self, qty: int) -> None:
         if self.state in (OrderState.CANCELED, OrderState.REJECTED, OrderState.FILLED):
             return
+        if qty <= 0:
+            raise ValueError(f"fill qty must be positive, got {qty}")
         self.filled_quantity += qty
         if self.filled_quantity >= self.quantity:
             self.filled_quantity = self.quantity
@@ -73,8 +75,6 @@ class Order:
             if self.filled_quantity < self.quantity:
                 self.cancel()
         if self.tif == TimeInForce.FOK and self.state in (OrderState.NEW, OrderState.WORKING, OrderState.PARTIALLY_FILLED):
-            # If not fully filled, cancel all
             if self.filled_quantity < self.quantity:
-                # Reset fills to zero to emulate FOK behavior if partially filled during cycle
-                self.filled_quantity = 0
+                # Cancel without resetting filled_quantity to preserve audit trail
                 self.cancel()

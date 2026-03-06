@@ -42,6 +42,10 @@ class PITDataReader:
         self._symbols_engine = symbols_engine
         self._bars = bars_store
 
+    @property
+    def fx_engine(self) -> Engine:
+        return self._fx_engine
+
     @staticmethod
     def _ensure_utc(ts: datetime) -> datetime:
         if ts.tzinfo is None:

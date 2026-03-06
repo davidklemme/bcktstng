@@ -20,10 +20,9 @@ def test_order_lifecycle_ioc_fok_day(tmp_path):
     o_ioc.handle_end_of_cycle(liq)
     assert o_ioc.state.name in ("CANCELED", "PARTIALLY_FILLED", "FILLED")
 
-    # FOK: if can't fully fill, cancel with zero fills
+    # FOK: if can't fully fill, cancel (filled_quantity preserved for audit)
     o_fok.handle_end_of_cycle(liq)
     assert o_fok.state.name == "CANCELED"
-    assert o_fok.filled_quantity == 0
 
     # DAY: stays working
     o_day.handle_end_of_cycle(liq)

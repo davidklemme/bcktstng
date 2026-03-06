@@ -84,7 +84,7 @@ def next_open(exchange: str, ts: datetime) -> datetime:
     local = _local_date(ts, tz)
     # If before today's open and not holiday/weekend, today at open
     days_ahead = 0
-    while True:
+    while days_ahead < 365:
         candidate = local + timedelta(days=days_ahead)
         if _is_weekend(candidate):
             days_ahead += 1
@@ -106,6 +106,7 @@ def next_open(exchange: str, ts: datetime) -> datetime:
         if days_ahead > 0:
             return open_dt.astimezone(timezone.utc)
         days_ahead += 1
+    raise ValueError(f"No valid trading day found within 365 days for {exchange} from {ts}")
 
 
 def next_close(exchange: str, ts: datetime) -> datetime:
@@ -117,7 +118,7 @@ def next_close(exchange: str, ts: datetime) -> datetime:
 
     # If currently before open, today's close; if during session, today's close; else next valid day's close
     days_ahead = 0
-    while True:
+    while days_ahead < 365:
         candidate = local + timedelta(days=days_ahead)
         if _is_weekend(candidate):
             days_ahead += 1
@@ -137,3 +138,4 @@ def next_close(exchange: str, ts: datetime) -> datetime:
         if days_ahead > 0:
             return close_dt.astimezone(timezone.utc)
         days_ahead += 1
+    raise ValueError(f"No valid trading day found within 365 days for {exchange} from {ts}")

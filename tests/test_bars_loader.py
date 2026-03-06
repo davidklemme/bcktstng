@@ -34,15 +34,15 @@ def test_normalizes_to_utc_close_and_flags_gaps_and_nans() -> None:
 
     rows, validation = load_daily_bars_csv(csv_path, exchange="XNYS")
 
-    # Expect 4 rows, with ts being UTC close times
-    assert len(rows) == 4
+    # NaN rows are filtered out — 3 valid rows, 1 skipped
+    assert len(rows) == 3
     for r in rows:
         assert r.ts.tzinfo is not None and r.ts.tzinfo.utcoffset(r.ts) == timezone.utc.utcoffset(r.ts)
 
     # One missing session (2024-06-05) should be flagged as a gap
     assert date(2024, 6, 5) in validation.missing_dates
 
-    # One NaN row (missing open) at index 3 in input
+    # One NaN row (missing open) at input index 3
     assert 3 in validation.nan_row_indices
 
 

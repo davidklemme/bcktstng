@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 
 from .orders import Order, OrderSide
 from .portfolio import Portfolio
-from ..data.fx_repository import Engine as _EngineType  # type: ignore
+from sqlalchemy.engine import Engine
 
 
 @dataclass(frozen=True)

@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from ..data.adjusters import apply_actions, dividend_cashflow_on_exdate
 from ..data.corp_actions_repository import CorporateAction
-from ..data.fx_repository import get_rate_asof, Engine as _EngineType  # type: ignore
+from ..data.fx_repository import get_rate_asof
+from sqlalchemy.engine import Engine
+
+logger = logging.getLogger("quant.portfolio")
+
+
+def _validate_finite(value: float, name: str) -> None:
+    if math.isnan(value) or math.isinf(value):
+        raise ValueError(f"{name} must be finite, got {value}")
 
 
 @dataclass
@@ -58,15 +68,21 @@ class Portfolio:
     base_currency: str = "EUR"
     cash_by_ccy: Dict[str, float] = field(default_factory=dict)
     positions: Dict[int, Position] = field(default_factory=dict)
-    _processed_actions: Dict[int, List[datetime]] = field(default_factory=dict)
+    _processed_actions: Dict[int, List[Tuple[datetime, float, float]]] = field(default_factory=dict)
 
     def get_cash(self, currency: str) -> float:
         return self.cash_by_ccy.get(currency, 0.0)
 
     def deposit(self, amount: float, currency: str) -> None:
+        _validate_finite(amount, "deposit amount")
+        if amount < 0:
+            raise ValueError(f"deposit amount must be non-negative, got {amount}")
         self.cash_by_ccy[currency] = self.get_cash(currency) + float(amount)
 
     def withdraw(self, amount: float, currency: str) -> None:
+        _validate_finite(amount, "withdraw amount")
+        if amount < 0:
+            raise ValueError(f"withdraw amount must be non-negative, got {amount}")
         self.cash_by_ccy[currency] = self.get_cash(currency) - float(amount)
 
     def get_or_create_position(self, symbol_id: int, currency: str) -> Position:
@@ -77,23 +93,30 @@ class Portfolio:
         return pos
 
     def apply_fill(self, symbol_id: int, currency: str, side: str, qty: float, price: float) -> float:
+        # Validate all inputs before any mutation
+        _validate_finite(qty, "fill qty")
+        _validate_finite(price, "fill price")
+        if qty <= 0:
+            raise ValueError(f"fill qty must be positive, got {qty}")
+        if price < 0:
+            raise ValueError(f"fill price must be non-negative, got {price}")
+
         pos = self.get_or_create_position(symbol_id, currency)
         qty_signed = qty if side.upper() == "BUY" else -qty
-        before_qty = pos.quantity
         new_qty, realized_pnl = pos.apply_fill(qty_signed, price)
         notional = qty * price
         # Update cash
         if side.upper() == "BUY":
-            self.withdraw(notional, currency)
+            self.cash_by_ccy[currency] = self.get_cash(currency) - notional
         else:
-            self.deposit(notional, currency)
-        # Realized P&L is tracked separately by the caller; cash only moves by trade notional and costs
+            self.cash_by_ccy[currency] = self.get_cash(currency) + notional
         return realized_pnl
 
     def apply_transaction_cost(self, currency: str, cost: float) -> None:
         if cost == 0.0:
             return
-        self.withdraw(cost, currency)
+        _validate_finite(cost, "transaction cost")
+        self.cash_by_ccy[currency] = self.get_cash(currency) - cost
 
     def process_actions_for_symbol(self, symbol_id: int, actions: List[CorporateAction], asof: datetime) -> float:
         if asof.tzinfo is None:
@@ -105,11 +128,12 @@ class Portfolio:
         to_apply: List[CorporateAction] = []
         div_actions: List[CorporateAction] = []
         for a in actions:
-            if a.effective_date <= asof and a.effective_date not in processed:
+            action_key = (a.effective_date, a.split_ratio, a.dividend)
+            if a.effective_date <= asof and action_key not in processed:
                 to_apply.append(a)
                 if a.dividend and a.dividend != 0.0:
                     div_actions.append(a)
-                processed.append(a.effective_date)
+                processed.append(action_key)
         if not to_apply:
             return 0.0
         # Apply splits first via adjuster
@@ -120,7 +144,7 @@ class Portfolio:
             self.deposit(div_cash, pos.currency)
         return div_cash
 
-    def total_value_eur(self, asof: datetime, mark_prices: Dict[int, float], fx_engine: _EngineType) -> float:  # type: ignore
+    def total_value_eur(self, asof: datetime, mark_prices: Dict[int, float], fx_engine: Engine) -> float:
         if asof.tzinfo is None:
             asof = asof.replace(tzinfo=timezone.utc)
         total_eur = 0.0
@@ -129,8 +153,11 @@ class Portfolio:
             if ccy == self.base_currency:
                 total_eur += amount
             else:
-                rate = get_rate_asof(fx_engine, ccy, self.base_currency, asof)
-                total_eur += amount * rate.rate
+                try:
+                    rate = get_rate_asof(fx_engine, ccy, self.base_currency, asof)
+                    total_eur += amount * rate.rate
+                except LookupError:
+                    logger.warning("Missing FX rate for %s/%s at %s; skipping cash from total", ccy, self.base_currency, asof)
         # Positions
         for symbol_id, pos in self.positions.items():
             if pos.quantity == 0:
@@ -142,6 +169,9 @@ class Portfolio:
             if pos.currency == self.base_currency:
                 total_eur += mv
             else:
-                rate = get_rate_asof(fx_engine, pos.currency, self.base_currency, asof)
-                total_eur += mv * rate.rate
+                try:
+                    rate = get_rate_asof(fx_engine, pos.currency, self.base_currency, asof)
+                    total_eur += mv * rate.rate
+                except LookupError:
+                    logger.warning("Missing FX rate for %s/%s at %s; skipping position %d from total", pos.currency, self.base_currency, asof, symbol_id)
         return round(total_eur, 10)

@@ -67,13 +67,12 @@ def visualize_run_ascii(run_dir: str | Path, width: int = None, height: int = No
             if height is None:
                 # Use a reasonable default if terminal reports invalid height
                 height = min(max(term_size.lines - 10, 20), 40)  # Between 20-40 lines
-        except:
-            # Fallback to reasonable defaults
+        except (OSError, ValueError):
             if width is None:
                 width = 120
             if height is None:
                 height = 30
-    
+
     # Ensure minimum reasonable sizes
     width = max(width, 40)
     height = max(height, 10)
@@ -316,17 +315,16 @@ def visualize_runs_comparison(run_dirs: list[str | Path], width: int = None, hei
             if height is None:
                 # Use a reasonable default if terminal reports invalid height
                 height = min(max(term_size.lines - 20, 20), 40)  # More space for KPI table
-        except:
-            # Fallback to reasonable defaults
+        except (OSError, ValueError):
             if width is None:
                 width = 120
             if height is None:
                 height = 30
-    
+
     # Ensure minimum reasonable sizes
     width = max(width, 40)
     height = max(height, 10)
-    
+
     # Colors for different runs (more distinct ASCII characters)
     colors = ['█', '▓', '▒', '░', '■', '□', '▪', '▫', '▬', '▭']
     

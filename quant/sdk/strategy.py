@@ -42,9 +42,9 @@ class MultiSymbolStrategy(Strategy):
     """
 
     def on_start(self, ctx: "Context") -> None:
-        """Called once before the first event."""
+        """Called once before the first event. Resets state for clean runs."""
         super().on_start(ctx)
-        # Get all available symbols
+        # Reset symbol list for clean state on each run
         self.available_symbols = ctx.get_available_symbols()
         ctx.log.info(f"MultiSymbolStrategy starting with {len(self.available_symbols)} symbols: {[s.ticker for s in self.available_symbols]}")
 

@@ -16,6 +16,7 @@ class RateOfChange(MultiSymbolStrategy):
     last_states: Dict[str, Optional[str]] = field(default_factory=dict)  # symbol ticker -> 'long', 'short', or 'flat'
 
     def on_start(self, ctx: Context) -> None:
+        self.last_states = {}
         super().on_start(ctx)
         ctx.log.info("RateOfChange starting (window=%d, upper=%.4f, lower=%.4f)", self.window, self.upper, self.lower)
 

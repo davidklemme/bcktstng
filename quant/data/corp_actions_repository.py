@@ -18,18 +18,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 
+from ..common.utils import to_utc as _utc_dt
+
 
 CORP_ACTIONS_TABLE_NAME = "corporate_actions"
-
-
-def _utc_dt(value: str | datetime) -> datetime:
-    if isinstance(value, datetime):
-        dt = value
-    else:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True)

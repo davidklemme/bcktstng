@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import json
 import hashlib
 
+from ..common.utils import to_utc as _to_utc
 from ..data.pit_reader import PITDataReader, BarsStore
 from ..orchestrator.backtest import run_backtest
 
@@ -15,12 +16,6 @@ from ..orchestrator.backtest import run_backtest
 class FoldSpec:
     train_ranges: Tuple[Tuple[datetime, datetime], ...]
     val_range: Tuple[datetime, datetime]
-
-
-def _to_utc(ts: datetime) -> datetime:
-    if ts.tzinfo is None:
-        return ts.replace(tzinfo=timezone.utc)
-    return ts.astimezone(timezone.utc)
 
 
 def _unique_times_between(store: BarsStore, start: datetime, end: datetime) -> List[datetime]:
@@ -68,12 +63,6 @@ def make_purged_kfold_folds(
         right_start_idx = min(len(times) - 1, val_end_idx + 1 + embargo)
 
         train_ranges: List[Tuple[datetime, datetime]] = []
-        if left_end_idx >= 0 and left_end_idx >= 0 and left_end_idx >= 0 and left_end_idx >= 0:
-            if left_end_idx >= 0 and left_end_idx >= 0:
-                if left_end_idx >= 0 and val_start_idx - embargo - 1 >= 0:
-                    if val_start_idx - embargo - 1 >= 0:
-                        if (val_start_idx - embargo - 1) >= 0 and (val_start_idx - embargo - 1) >= 0:
-                            pass
         # Left training block
         left_train_end_idx = max(-1, val_start_idx - 1 - embargo)
         if left_train_end_idx >= 0:

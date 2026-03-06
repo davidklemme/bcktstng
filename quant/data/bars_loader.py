@@ -98,7 +98,7 @@ def load_daily_bars_csv(csv_path: str, exchange: str) -> Tuple[List[BarRow], Val
                 or parsed_volume is None
             ):
                 nan_row_indices.append(idx)
-                # Still attempt to compute ts for diagnostics
+                continue  # Skip NaN rows from output
 
             ts_utc = _session_close_utc(exchange, session_dt)
 
@@ -106,11 +106,11 @@ def load_daily_bars_csv(csv_path: str, exchange: str) -> Tuple[List[BarRow], Val
                 BarRow(
                     ts=ts_utc,
                     symbol_id=int(r["symbol_id"]),
-                    open=float(parsed_open) if parsed_open is not None else float("nan"),
-                    high=float(parsed_high) if parsed_high is not None else float("nan"),
-                    low=float(parsed_low) if parsed_low is not None else float("nan"),
-                    close=float(parsed_close) if parsed_close is not None else float("nan"),
-                    volume=int(parsed_volume) if parsed_volume is not None else 0,
+                    open=float(parsed_open),
+                    high=float(parsed_high),
+                    low=float(parsed_low),
+                    close=float(parsed_close),
+                    volume=int(parsed_volume),
                     dt=session_dt,
                 )
             )
@@ -191,16 +191,17 @@ def load_minute_bars_csv(csv_path: str, exchange: str) -> Tuple[List[BarRow], Va
                 or parsed_volume is None
             ):
                 nan_row_indices.append(idx)
+                continue  # Skip NaN rows from output
 
             rows.append(
                 BarRow(
                     ts=ts_utc,
                     symbol_id=int(r["symbol_id"]),
-                    open=float(parsed_open) if parsed_open is not None else float("nan"),
-                    high=float(parsed_high) if parsed_high is not None else float("nan"),
-                    low=float(parsed_low) if parsed_low is not None else float("nan"),
-                    close=float(parsed_close) if parsed_close is not None else float("nan"),
-                    volume=int(parsed_volume) if parsed_volume is not None else 0,
+                    open=float(parsed_open),
+                    high=float(parsed_high),
+                    low=float(parsed_low),
+                    close=float(parsed_close),
+                    volume=int(parsed_volume),
                     dt=local_dt.date(),
                 )
             )

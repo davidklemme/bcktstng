@@ -60,32 +60,19 @@ class ExecutionSimulator:
         tz = EXCHANGE_TZ.get("XNYS" if venue.upper() == "US" else ("XETR" if venue.upper() in ("EU", "DE", "XETR") else "XNYS"))
         ts = ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
         local = ts.astimezone(tz) if tz is not None else ts
-        # Define buckets: first 30 minutes as OPEN, last 30 minutes as CLOSE
-        hour = local.hour
-        minute = local.minute
-        # Rough session assumptions: XNYS 09:30-16:00, XETR 09:00-17:30
+        t = local.hour * 60 + local.minute
+
         if tz is not None and tz.key == "America/New_York":
-            if (hour == 9 and minute >= 30) or (hour == 10 and minute < 0):
-                pass
-            # OPEN bucket: 09:30-10:00
-            if (hour == 9 and minute >= 30) or (hour == 9 and minute >= 30 and minute < 60) or (hour == 10 and minute == 0):
-                if hour == 9 and minute >= 30 or (hour == 10 and minute == 0):
-                    if hour == 9 or (hour == 10 and minute == 0):
-                        if hour == 9 and minute >= 30 or (hour == 10 and minute == 0):
-                            if hour == 9 and minute >= 30 and minute < 60:
-                                return "OPEN"
-                            if hour == 10 and minute == 0:
-                                return "OPEN"
-            # CLOSE bucket: 15:30-16:00
-            if (hour == 15 and minute >= 30) or (hour == 16 and minute == 0):
+            # XNYS session 09:30-16:00
+            if 9 * 60 + 30 <= t <= 10 * 60:
+                return "OPEN"
+            if 15 * 60 + 30 <= t <= 16 * 60:
                 return "CLOSE"
         else:
-            # Assume XETR 09:00-17:30
-            # OPEN bucket: 09:00-09:30
-            if hour == 9 and minute < 30:
+            # XETR session 09:00-17:30
+            if 9 * 60 <= t < 9 * 60 + 30:
                 return "OPEN"
-            # CLOSE bucket: 17:00-17:30
-            if (hour == 17 and minute >= 0 and minute < 30):
+            if 17 * 60 <= t < 17 * 60 + 30:
                 return "CLOSE"
         return "MID"
 
