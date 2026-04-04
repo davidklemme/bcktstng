@@ -1,0 +1,15 @@
+{
+  "run_id": "run_1775306597_520649",
+  "timestamp": "2026-04-04T12:43:19.220070Z",
+  "git_sha": "86e33b1575f26ca7823ea1658ab626b673207bfc",
+  "params_hash": "ed577f55b0b7f1f1e9d2ef9807418c73328f2cdbc51efeb6a56b370136e1cccb",
+  "params": {
+    "strategy": "GeopoliticalWhisper",
+    "start": "2024-01-02T00:00:00Z",
+    "end": "2024-01-04T00:00:00Z",
+    "base_currency": "EUR",
+    "costs_yaml_path": "quant/data/cost_profiles.yml",
+    "seed": null,
+    "starting_cash": 10000.0
+  }
+}

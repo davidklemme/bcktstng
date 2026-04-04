@@ -1,7 +1,7 @@
 {
-  "run_id": "run_1755107389_242605",
-  "timestamp": "2025-08-13T17:49:49.253390Z",
-  "git_sha": "0eb094f76f0337ed1009ec9292030bafcbe3790b",
+  "run_id": "run_1775306597_356583",
+  "timestamp": "2026-04-04T12:43:17.143236Z",
+  "git_sha": "86e33b1575f26ca7823ea1658ab626b673207bfc",
   "params_hash": "2c13638edab84866edf83ed2954e6daa76f0765b46f97676e89a20c595fd3037",
   "params": {
     "strategy": "BollingerBands",
