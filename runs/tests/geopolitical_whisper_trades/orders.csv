@@ -1,3 +1,3 @@
-ts,order_id,symbol_id,side,quantity,type,tif,limit_price,state
-2024-01-03T16:00:00Z,gw_entry_AAPL,1,BUY,5,MKT,DAY,,NEW
-2024-01-03T16:30:00Z,gw_exit_AAPL,1,SELL,5,MKT,DAY,,NEW
+ts,order_id,symbol_id,side,quantity,filled_quantity,type,tif,limit_price,state,note
+2024-01-03T16:01:00Z,gw_entry_AAPL_202401031600,1,BUY,5,5,MKT,DAY,,FILLED,
+2024-01-03T16:31:00Z,gw_exit_AAPL_202401031630,1,SELL,5,5,MKT,DAY,,FILLED,

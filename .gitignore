@@ -84,3 +84,7 @@ htmlcov/
 .env.development.local
 .env.test.local
 .env.production.local 
+# Virtualenvs (a committed venv is 90% of this repo and is not portable)
+.venv/
+venv/
+ENV/

@@ -1,8 +1,8 @@
 {
-  "run_id": "run_1775306597_356583",
-  "timestamp": "2026-04-04T12:43:17.143236Z",
-  "git_sha": "86e33b1575f26ca7823ea1658ab626b673207bfc",
-  "params_hash": "2c13638edab84866edf83ed2954e6daa76f0765b46f97676e89a20c595fd3037",
+  "run_id": "run_1784925373_587716",
+  "timestamp": "2026-07-24T20:36:13.231449Z",
+  "git_sha": "b4c1574f747dbc6248dd3f08519ce9b217ef3154",
+  "params_hash": "18b785821c912c9b91111ad53e7ad80f66196d0a5f1ead1c32a0e1b335b0ea91",
   "params": {
     "strategy": "BollingerBands",
     "start": "2024-01-03T00:00:00Z",
@@ -10,6 +10,7 @@
     "base_currency": "EUR",
     "costs_yaml_path": "quant/data/cost_profiles.yml",
     "seed": null,
-    "starting_cash": 0.0
+    "starting_cash": 100000.0,
+    "fill_timing": "next_open"
   }
 }

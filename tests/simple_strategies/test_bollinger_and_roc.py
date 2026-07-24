@@ -22,6 +22,9 @@ def test_bollinger_backtest_smoke(daily_reader_and_store, capsys):
         start=start,
         end=end,
         base_currency="EUR",
+        # Must be funded: an unfunded run buys on implicit unlimited credit and
+        # leaves every return metric undefined.
+        starting_cash=100_000.0,
         costs_yaml_path=str(Path("quant/data/cost_profiles.yml")),
         out_dir=Path("runs/tests/bollinger"),
     )
@@ -33,7 +36,9 @@ def test_bollinger_backtest_smoke(daily_reader_and_store, capsys):
 
     # Basic assertions to ensure viability
     assert len(result.equity) > 0
-    assert isinstance(result.metrics.get("return"), float)
+    assert isinstance(result.metrics.get("total_return"), float)
+    assert result.metrics["initial_capital"] == 100_000.0
+    assert result.metrics["max_drawdown"] <= 0.0
 
     # Check that the strategy processed multiple symbols
     print("Bollinger available symbols:", len(strat.available_symbols))
@@ -55,6 +60,9 @@ def test_roc_backtest_smoke(daily_reader_and_store, capsys):
         start=start,
         end=end,
         base_currency="EUR",
+        # Must be funded: an unfunded run buys on implicit unlimited credit and
+        # leaves every return metric undefined.
+        starting_cash=100_000.0,
         costs_yaml_path=str(Path("quant/data/cost_profiles.yml")),
         out_dir=Path("runs/tests/roc"),
     )
@@ -64,7 +72,9 @@ def test_roc_backtest_smoke(daily_reader_and_store, capsys):
     print("ROC orders:", len(result.orders))
 
     assert len(result.equity) > 0
-    assert isinstance(result.metrics.get("return"), float)
+    assert isinstance(result.metrics.get("total_return"), float)
+    assert result.metrics["initial_capital"] == 100_000.0
+    assert result.metrics["max_drawdown"] <= 0.0
 
     # Check that the strategy processed multiple symbols
     print("ROC available symbols:", len(strat.available_symbols))

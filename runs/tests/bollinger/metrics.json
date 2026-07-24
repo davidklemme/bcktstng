@@ -1,7 +1,26 @@
 {
-  "final_equity_eur": 0.0,
-  "start_equity_eur": 0.0,
-  "return": 0.0,
+  "initial_capital": 100000.0,
+  "final_equity": 100000.0,
+  "num_periods": 39,
+  "total_return": 0.0,
+  "cagr": 0.0,
+  "ann_volatility": 0.0,
+  "sharpe": null,
+  "sortino": null,
+  "max_drawdown": 0.0,
+  "calmar": null,
+  "exposure": 0.0,
+  "turnover": 0.0,
+  "periods_per_year": 252,
+  "warnings": [
+    "zero_return_variance: sharpe undefined"
+  ],
   "num_orders": 0,
-  "num_fills": 0
+  "num_fills": 0,
+  "num_unfilled_orders": 0,
+  "gross_traded_notional": 0.0,
+  "fill_timing": "next_open",
+  "final_equity_eur": 100000.0,
+  "start_equity_eur": 100000.0,
+  "return": 0.0
 }

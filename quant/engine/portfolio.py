@@ -33,16 +33,18 @@ class Position:
         close_qty = min(abs(qty_delta), abs(self.quantity))
         sign = 1.0 if self.quantity > 0 else -1.0
         realized_pnl = (price - self.average_price) * (close_qty * sign)
+        was_long = self.quantity > 0
         self.quantity += qty_delta
         if self.quantity == 0:
             self.average_price = 0.0
-        else:
-            # If flipped beyond zero, set avg price to fill price of the residual open portion
-            if (self.quantity > 0 and qty_delta > 0) or (self.quantity < 0 and qty_delta < 0):
-                # this path theoretically won't occur because we handled same sign earlier
-                self.average_price = (self.average_price + price) / 2.0
-            else:
-                self.average_price = price
+        elif (self.quantity > 0) != was_long:
+            # Flipped through zero: the residual position consists solely of
+            # this fill, so its cost basis is this fill's price. (The previous
+            # averaging of old and new price understated the basis of the new
+            # side - e.g. short 100 @ 100 then buy 300 @ 110 gave 105.0 for a
+            # position that was entirely acquired at 110.)
+            self.average_price = price
+        # Otherwise the position was merely reduced and the basis is unchanged.
         return self.quantity, realized_pnl
 
     def apply_corporate_actions(self, actions: List[CorporateAction]) -> None:

@@ -65,19 +65,14 @@ class ExecutionSimulator:
         minute = local.minute
         # Rough session assumptions: XNYS 09:30-16:00, XETR 09:00-17:30
         if tz is not None and tz.key == "America/New_York":
-            if (hour == 9 and minute >= 30) or (hour == 10 and minute < 0):
-                pass
-            # OPEN bucket: 09:30-10:00
-            if (hour == 9 and minute >= 30) or (hour == 9 and minute >= 30 and minute < 60) or (hour == 10 and minute == 0):
-                if hour == 9 and minute >= 30 or (hour == 10 and minute == 0):
-                    if hour == 9 or (hour == 10 and minute == 0):
-                        if hour == 9 and minute >= 30 or (hour == 10 and minute == 0):
-                            if hour == 9 and minute >= 30 and minute < 60:
-                                return "OPEN"
-                            if hour == 10 and minute == 0:
-                                return "OPEN"
-            # CLOSE bucket: 15:30-16:00
-            if (hour == 15 and minute >= 30) or (hour == 16 and minute == 0):
+            # Session 09:30-16:00. OPEN covers the first 30 minutes,
+            # CLOSE the last 30. Both are half-open so that 10:00 is MID and
+            # 16:00 - the stamp every daily bar carries - is CLOSE.
+            if hour == 9 and minute >= 30:
+                return "OPEN"
+            if hour == 15 and minute >= 30:
+                return "CLOSE"
+            if hour == 16 and minute == 0:
                 return "CLOSE"
         else:
             # Assume XETR 09:00-17:30
@@ -101,10 +96,12 @@ class ExecutionSimulator:
         if order.type == OrderType.LIMIT and order.limit_price is None:
             raise ValueError("Limit order missing limit_price")
 
-        # Determine max fillable per ADV cap and available liquidity
+        # Determine max fillable per ADV cap and available liquidity.
+        # The cap applies to every TIF: FOK previously skipped it, which let a
+        # caller obtain unlimited size simply by changing the time-in-force.
         adv = self._adv.get(order.symbol_id, available_liquidity)
         cap = int(max(0, min(available_liquidity, self._cap * adv)))
-        max_fillable = min(order.quantity, cap if order.tif != TimeInForce.FOK else order.quantity)
+        max_fillable = min(order.quantity, cap)
 
         fills: List[Fill] = []
         filled = 0
@@ -125,19 +122,29 @@ class ExecutionSimulator:
         impact = (1 if order.side == OrderSide.BUY else -1) * sigma * sqrt(max(qty_for_impact, 1) / max(adv, 1)) * self._alpha
         impacted_mid = mid + impact
 
-        # Determine executable price respecting limit and [bid, ask]
+        # Determine executable price respecting limit and [bid, ask].
         target = impacted_mid + (urgency_k * effective_spread if order.side == OrderSide.BUY else -urgency_k * effective_spread)
-        # Clamp to [bid, ask] widened by TOD does not change quoted bounds; keep original quote bounds
-        target = min(max(target, quote.bid), quote.ask)
 
-        # Respect limit constraints
         if order.type == OrderType.LIMIT:
-            if order.side == OrderSide.BUY and target > order.limit_price:
-                target = order.limit_price
-            if order.side == OrderSide.SELL and target < order.limit_price:
-                target = order.limit_price
-            # Still ensure within [bid, ask]
+            # A limit order never fills worse than its limit, and a passive
+            # order does not trade through the touch.
+            if order.side == OrderSide.BUY:
+                target = min(target, order.limit_price)
+            else:
+                target = max(target, order.limit_price)
             target = min(max(target, quote.bid), quote.ask)
+        else:
+            # Market orders DO trade through the touch when size or volatility
+            # warrants. Clamping them to [bid, ask] (the previous behaviour)
+            # made both the impact term and the time-of-day spread multipliers
+            # dead code: every market fill landed exactly on the touch
+            # regardless of order size. Only guard against a non-positive price.
+            #
+            # NOTE: impact is driven by `sigma_by_symbol` / `adv_by_symbol`.
+            # run_backtest does not currently populate either, so impact
+            # evaluates to 0 and market fills still cost half the spread.
+            # Supplying per-symbol ADV and volatility is what turns this on.
+            target = max(target, 1e-9)
 
         # FOK: only fill if full qty available under constraints
         if order.tif == TimeInForce.FOK and max_fillable < order.quantity:

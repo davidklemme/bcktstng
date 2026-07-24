@@ -1,62 +1,55 @@
+"""Geopolitical Whisper — in-house engine adapter.
+
+Signal logic lives in :mod:`quant.strategies.geopolitical_whisper_signal` and
+is shared verbatim with the Lumibot adapter so the two cannot drift.
+"""
+
 from __future__ import annotations
 
-import logging
-import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from ...sdk.strategy import MultiSymbolStrategy, Context
 from ...data.symbols_repository import SymbolRow
+from ...sdk.strategy import Context, MultiSymbolStrategy
+from ..geopolitical_whisper_signal import (
+    ALLOCATION_FRACTION,
+    LOOKBACK,
+    PRICE_CHANGE_BAND,
+    RVOL_THRESHOLD,
+    SLIPPAGE_PENALTY_PCT,
+    TIME_EXIT_MINUTES,
+    TRAILING_STOP_PCT,
+    evaluate_signal,
+    should_exit,
+    size_position,
+)
+
+__all__ = [
+    "GeopoliticalWhisper",
+    "evaluate_signal",
+    "LOOKBACK",
+    "RVOL_THRESHOLD",
+    "PRICE_CHANGE_BAND",
+]
 
 
 @dataclass
 class _OpenPosition:
-    """Tracks an open position for trailing-stop and time-exit logic."""
-
     symbol_id: int
     ticker: str
     entry_time: datetime
     entry_price: float
     quantity: int
-    highest_since_entry: float  # tracks running high for trailing stop
-
-
-# ---------------------------------------------------------------------------
-# Strategy parameters (frozen after construction)
-# ---------------------------------------------------------------------------
-RVOL_THRESHOLD = 4.0          # current volume / SMA(volume, 15)
-LOOKBACK = 15                 # number of bars for SMA and price-change
-PRICE_CHANGE_BAND = 0.005     # +/- 0.5 %
-TRAILING_STOP_PCT = 0.02      # 2 % trailing stop
-TIME_EXIT_MINUTES = 30        # close after 30 minutes
-ALLOCATION_FRACTION = 0.10    # 10 % of portfolio per trade
-STARTING_CAPITAL = 10_000.0   # reference starting capital
-SLIPPAGE_PENALTY_PCT = 0.0005  # 0.05 % per fill (on top of engine spread)
+    highest_since_entry: float
 
 
 @dataclass
 class GeopoliticalWhisper(MultiSymbolStrategy):
-    """Detects institutional accumulation: massive volume spike while price
-    stays flat on 1-minute bars.  Uses a 2 % trailing stop and a 30-minute
-    time-based exit.
+    """Volume-spike-with-flat-price entry, trailing-stop / timed exit.
 
-    Parameters
-    ----------
-    rvol_threshold : float
-        Minimum Relative Volume (current bar vol / SMA-15 vol).
-    lookback : int
-        Number of bars for the volume SMA and price-change window.
-    price_change_band : float
-        Maximum absolute price change over *lookback* bars (fraction, e.g. 0.005 = 0.5 %).
-    trailing_stop_pct : float
-        Trailing stop distance as a fraction of the running high.
-    time_exit_minutes : int
-        Forcibly exit this many minutes after entry.
-    allocation_fraction : float
-        Fraction of portfolio equity to allocate per trade.
-    slippage_penalty_pct : float
-        Extra slippage penalty applied at entry sizing (conservative).
+    See :mod:`quant.strategies.geopolitical_whisper_signal` for the signal
+    definition and its no-look-ahead contract.
     """
 
     rvol_threshold: float = RVOL_THRESHOLD
@@ -66,307 +59,242 @@ class GeopoliticalWhisper(MultiSymbolStrategy):
     time_exit_minutes: int = TIME_EXIT_MINUTES
     allocation_fraction: float = ALLOCATION_FRACTION
     slippage_penalty_pct: float = SLIPPAGE_PENALTY_PCT
+    verbose: bool = False
 
-    # Internal mutable state — NOT parameters
     _open_positions: Dict[int, _OpenPosition] = field(default_factory=dict)
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
     def on_start(self, ctx: Context) -> None:
         super().on_start(ctx)
         ctx.log.info(
-            "GeopoliticalWhisper starting — rvol>=%.1f, lookback=%d, "
-            "band=±%.2f%%, trail=%.1f%%, time_exit=%dm",
+            "GeopoliticalWhisper starting - rvol>%.2f, lookback=%d, band=+/-%.3f%%, "
+            "trail=%.2f%%, time_exit=%dm, alloc=%.1f%%",
             self.rvol_threshold,
             self.lookback,
             self.price_change_band * 100,
             self.trailing_stop_pct * 100,
             self.time_exit_minutes,
+            self.allocation_fraction * 100,
         )
 
-    # ------------------------------------------------------------------
-    # Per-symbol, per-bar logic
-    # ------------------------------------------------------------------
     def on_symbol_event(self, symbol: SymbolRow, evt: Any, ctx: Context) -> None:
-        now = ctx.now
         sym_id = symbol.symbol_id
         ticker = symbol.ticker
 
-        # ------- EXIT LOGIC (checked first, every bar) -------
+        # Reconcile before acting: an order can be silently dropped by the
+        # engine when no bar exists for the symbol at that timestamp, which
+        # would otherwise leave this strategy believing it holds a position
+        # the portfolio never opened.
+        self._reconcile(sym_id, ctx)
+
         if sym_id in self._open_positions:
             self._check_exit(sym_id, ticker, ctx)
-            # If position was closed in check_exit, skip entry evaluation
-            if sym_id not in self._open_positions:
-                return
-
-        # ------- ENTRY LOGIC -------
-        # Skip if we already hold this symbol
-        if sym_id in self._open_positions:
             return
 
-        # Need lookback+1 bars: lookback historical + current
-        # The data API returns bars up to and including ctx.now (PIT-safe).
-        # The LAST bar in the returned list is the *completed* bar whose
-        # timestamp == ctx.now.  We treat it as the "just closed" bar,
-        # and use the *previous* lookback bars for the SMA — this avoids
-        # using the current bar's volume in the SMA that we compare it against.
         required_bars = self.lookback + 1
-        data = ctx.data.get(
-            ticker,
-            ["close", "volume", "ts"],
-            lookback=required_bars,
-            at=now,
-        )
-        closes: List[float] = data["close"]
-        volumes: List[int] = data["volume"]
-        timestamps: List[datetime] = data["ts"]
-
+        data = ctx.data.get(ticker, ["close", "volume"], lookback=required_bars, at=ctx.now)
+        closes = data.get("close") or []
+        volumes = data.get("volume") or []
         if len(closes) < required_bars:
-            return  # not enough history yet
-
-        # ---- Compute RVOL (no look-ahead) ----
-        # SMA is computed over the PREVIOUS `lookback` bars (indices 0..lookback-1)
-        # Current bar is the LAST element (index lookback)
-        hist_volumes = volumes[:-1]  # lookback bars preceding current
-        current_volume = volumes[-1]
-
-        vol_sma = sum(hist_volumes) / len(hist_volumes) if hist_volumes else 0.0
-        if vol_sma <= 0:
-            return  # division-by-zero guard
-        rvol = current_volume / vol_sma
-
-        # ---- Price action check (no look-ahead) ----
-        # Compare current close to the close `lookback` bars ago
-        price_now = closes[-1]
-        price_ago = closes[0]  # lookback bars ago
-        if price_ago <= 0:
             return
-        pct_change = (price_now - price_ago) / price_ago
 
-        # ---- Signal evaluation ----
-        signal = (
-            rvol > self.rvol_threshold
-            and -self.price_change_band < pct_change < self.price_change_band
+        sig = evaluate_signal(
+            closes,
+            volumes,
+            lookback=self.lookback,
+            rvol_threshold=self.rvol_threshold,
+            price_change_band=self.price_change_band,
         )
 
-        # ---- Verbose logging at every evaluation ----
-        ctx.log.info(
-            "[%s] %s | close=%.4f  vol=%d  vol_sma=%.1f  RVOL=%.2f  "
-            "pct_chg=%.4f%%  signal=%s",
-            now.isoformat(),
-            ticker,
-            price_now,
-            current_volume,
-            vol_sma,
-            rvol,
-            pct_change * 100,
-            signal,
+        if self.verbose:
+            ctx.log.info(
+                "[%s] %s close=%.4f vol=%s vol_sma=%s RVOL=%s pct_chg=%s signal=%s (%s)",
+                ctx.now.isoformat(),
+                ticker,
+                closes[-1],
+                volumes[-1],
+                _fmt(sig["vol_sma"], ".1f"),
+                _fmt(sig["rvol"], ".2f"),
+                _fmt_pct(sig["pct_change"]),
+                sig["signal"],
+                sig["reason"],
+            )
+
+        if not sig["signal"]:
+            return
+
+        price = float(closes[-1])
+        shares = size_position(
+            self._investable_capital(ctx, symbol.currency),
+            price,
+            self.allocation_fraction,
+            self.slippage_penalty_pct,
         )
-
-        if not signal:
-            return
-
-        # ---- Position sizing (whole shares, conservative) ----
-        portfolio_value = self._estimate_portfolio_value(ctx)
-        alloc = portfolio_value * self.allocation_fraction
-        # Deduct slippage penalty from allocation to be conservative
-        effective_price = price_now * (1.0 + self.slippage_penalty_pct)
-        if effective_price <= 0:
-            return
-        raw_shares = alloc / effective_price
-        shares = int(math.floor(raw_shares))  # whole shares only
         if shares <= 0:
             ctx.log.warning(
-                "[%s] %s | Signal triggered but allocation too small for 1 share "
-                "(alloc=%.2f, price=%.4f)",
-                now.isoformat(),
+                "[%s] %s signal fired but allocation funds 0 whole shares at %.4f",
+                ctx.now.isoformat(),
                 ticker,
-                alloc,
-                effective_price,
+                price,
             )
             return
 
-        # ---- Place market buy ----
-        slippage_cost = shares * price_now * self.slippage_penalty_pct
         ctx.log.info(
-            ">>> ENTRY [%s] %s | BUY %d shares @ ~%.4f  "
-            "alloc=%.2f  slippage_cost=%.4f  RVOL=%.2f",
-            now.isoformat(),
+            ">>> ENTRY [%s] %s BUY %d @ ~%.4f RVOL=%.2f pct_chg=%s est_slippage=%.4f",
+            ctx.now.isoformat(),
             ticker,
             shares,
-            price_now,
-            alloc,
-            slippage_cost,
-            rvol,
+            price,
+            sig["rvol"],
+            _fmt_pct(sig["pct_change"]),
+            shares * price * self.slippage_penalty_pct,
         )
-        ctx.order(ticker, shares, side="BUY", type="MKT", tag=f"gw_entry_{ticker}")
-
+        ctx.order(ticker, shares, side="BUY", type="MKT", tag=f"gw_entry_{ticker}_{ctx.now:%Y%m%d%H%M}")
         self._open_positions[sym_id] = _OpenPosition(
             symbol_id=sym_id,
             ticker=ticker,
-            entry_time=now,
-            entry_price=price_now,
+            entry_time=ctx.now,
+            entry_price=price,
             quantity=shares,
-            highest_since_entry=price_now,
+            highest_since_entry=price,
         )
 
-    # ------------------------------------------------------------------
-    # Exit logic
-    # ------------------------------------------------------------------
     def _check_exit(self, sym_id: int, ticker: str, ctx: Context) -> None:
         pos = self._open_positions[sym_id]
-        now = ctx.now
+        data = ctx.data.get(ticker, ["close", "high", "low"], lookback=1, at=ctx.now)
+        closes = data.get("close") or []
 
-        # Fetch current price (just need the latest bar)
-        data = ctx.data.get(ticker, ["close", "high"], lookback=1, at=now)
-        if not data["close"]:
-            return
-        current_close = data["close"][-1]
-        current_high = data["high"][-1]
+        minutes_held = (ctx.now - pos.entry_time).total_seconds() / 60.0
 
-        # Update trailing high
-        pos.highest_since_entry = max(pos.highest_since_entry, current_high)
-
-        # ---- Time-based exit ----
-        elapsed = now - pos.entry_time
-        time_exit = elapsed >= timedelta(minutes=self.time_exit_minutes)
-
-        # ---- Trailing stop ----
-        trail_price = pos.highest_since_entry * (1.0 - self.trailing_stop_pct)
-        trailing_stop_hit = current_close <= trail_price
-
-        if not (time_exit or trailing_stop_hit):
+        if not closes:
+            # No price this bar. The trailing stop cannot be evaluated, but a
+            # timed exit still must fire rather than silently extending the
+            # hold indefinitely.
+            if minutes_held >= self.time_exit_minutes:
+                self._close(pos, pos.entry_price, "TIME_EXIT_NO_QUOTE", minutes_held, ctx)
             return
 
-        reason = "TIME_EXIT" if time_exit else "TRAILING_STOP"
-        slippage_cost = pos.quantity * current_close * self.slippage_penalty_pct
+        close = float(closes[-1])
+        highs = data.get("high") or []
+        lows = data.get("low") or []
+        if highs:
+            pos.highest_since_entry = max(pos.highest_since_entry, float(highs[-1]))
+        low = float(lows[-1]) if lows else None
 
+        decision = should_exit(
+            minutes_held=minutes_held,
+            current_price=close,
+            intrabar_low=low,
+            highest_since_entry=pos.highest_since_entry,
+            trailing_stop_pct=self.trailing_stop_pct,
+            time_exit_minutes=self.time_exit_minutes,
+        )
+        if not decision["exit"]:
+            return
+
+        # A touched stop fills at the stop level, not at the (better) close.
+        fill = decision["stop_price"] if decision["reason"] == "TRAILING_STOP" else close
+        self._close(pos, fill, decision["reason"], minutes_held, ctx)
+
+    def _close(
+        self,
+        pos: _OpenPosition,
+        price: float,
+        reason: str,
+        minutes_held: float,
+        ctx: Context,
+    ) -> None:
         ctx.log.info(
-            "<<< EXIT  [%s] %s | SELL %d shares @ ~%.4f  reason=%s  "
-            "entry=%.4f  high=%.4f  trail=%.4f  elapsed=%s  slippage_cost=%.4f",
-            now.isoformat(),
-            ticker,
+            "<<< EXIT [%s] %s SELL %d @ ~%.4f reason=%s entry=%.4f high=%.4f held=%.1fm "
+            "gross_pnl=%.2f est_slippage=%.4f",
+            ctx.now.isoformat(),
+            pos.ticker,
             pos.quantity,
-            current_close,
+            price,
             reason,
             pos.entry_price,
             pos.highest_since_entry,
-            trail_price,
-            str(elapsed),
-            slippage_cost,
+            minutes_held,
+            (price - pos.entry_price) * pos.quantity,
+            pos.quantity * price * self.slippage_penalty_pct,
         )
-        ctx.order(ticker, pos.quantity, side="SELL", type="MKT", tag=f"gw_exit_{ticker}")
-        del self._open_positions[sym_id]
+        ctx.order(
+            pos.ticker,
+            pos.quantity,
+            side="SELL",
+            type="MKT",
+            tag=f"gw_exit_{pos.ticker}_{ctx.now:%Y%m%d%H%M}",
+        )
+        self._open_positions.pop(pos.symbol_id, None)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _estimate_portfolio_value(ctx: Context) -> float:
-        """Return total cash in base currency as a sizing proxy.
+    def _reconcile(self, sym_id: int, ctx: Context) -> None:
+        """Drop internal state when the portfolio shows no matching position.
 
-        For minute-bar backtests with starting_cash, this gives a reasonable
-        estimate without needing FX conversion of mark prices every tick.
-        Falls back to STARTING_CAPITAL if portfolio has no cash yet.
+        Guards against the engine dropping an unfillable order, which would
+        otherwise strand this strategy in a permanently "long" state that
+        blocks all future entries for the symbol.
         """
-        # NOTE: This sums cash across all currencies without FX conversion.
-        # Acceptable for single-currency backtests.  For multi-currency live
-        # trading, replace with proper FX-adjusted portfolio valuation.
-        total_cash = sum(ctx.portfolio.cash_by_ccy.values())
-        if total_cash <= 0:
-            return STARTING_CAPITAL
-        return total_cash
+        tracked = self._open_positions.get(sym_id)
+        if tracked is None:
+            return
+        # Allow one bar of settle time: the entry order is submitted during the
+        # same iteration and is only applied to the portfolio afterwards.
+        if ctx.now <= tracked.entry_time:
+            return
+        actual = ctx.portfolio.positions.get(sym_id)
+        if actual is None or actual.quantity <= 0:
+            ctx.log.warning(
+                "[%s] %s tracked position of %d shares has no portfolio counterpart "
+                "(order never filled); clearing internal state",
+                ctx.now.isoformat(),
+                tracked.ticker,
+                tracked.quantity,
+            )
+            self._open_positions.pop(sym_id, None)
+
+    def _investable_capital(self, ctx: Context, currency: str) -> float:
+        """Total cash converted into the instrument's currency.
+
+        Summing raw balances across currencies would overstate buying power,
+        so each balance is converted at the point-in-time rate. A balance
+        whose rate cannot be resolved is excluded rather than counted at par.
+        """
+        reader = ctx.data._reader
+        total = 0.0
+        for ccy, amount in ctx.portfolio.cash_by_ccy.items():
+            if not amount:
+                continue
+            if ccy == currency:
+                total += float(amount)
+                continue
+            try:
+                total += float(amount) * reader.get_fx(ccy, currency, ctx.now).rate
+            except Exception:
+                ctx.log.warning(
+                    "No FX rate %s/%s at %s; excluding %.2f %s from buying power",
+                    ccy, currency, ctx.now.isoformat(), amount, ccy,
+                )
+        return total
 
     def on_end(self, ctx: Context) -> None:
-        # Force-close any remaining positions at end-of-data
-        for sym_id in list(self._open_positions.keys()):
-            pos = self._open_positions[sym_id]
-            data = ctx.data.get(pos.ticker, ["close"], lookback=1, at=ctx.now)
-            if data["close"]:
-                ctx.log.info(
-                    "<<< EOD FORCE EXIT [%s] %s | SELL %d shares @ ~%.4f",
-                    ctx.now.isoformat(),
-                    pos.ticker,
-                    pos.quantity,
-                    data["close"][-1],
-                )
-                ctx.order(
-                    pos.ticker,
-                    pos.quantity,
-                    side="SELL",
-                    type="MKT",
-                    tag=f"gw_eod_{pos.ticker}",
-                )
-            del self._open_positions[sym_id]
-        ctx.log.info("GeopoliticalWhisper finished")
+        # NOTE: orders submitted from on_end are NOT executed by
+        # quant.orchestrator.backtest.run_backtest (the fill loop has already
+        # finished). Positions still open here are reported so the equity
+        # curve's final mark is not mistaken for a realised exit.
+        for pos in self._open_positions.values():
+            ctx.log.warning(
+                "Backtest ended with %s still open: %d shares from %s (unrealised, never exited)",
+                pos.ticker,
+                pos.quantity,
+                pos.entry_time.isoformat(),
+            )
+        ctx.log.info("GeopoliticalWhisper finished (%d position(s) left open)", len(self._open_positions))
+        self._open_positions.clear()
         super().on_end(ctx)
 
 
-# ---------------------------------------------------------------------------
-# Pure-function signal evaluator (for unit testing without Context)
-# ---------------------------------------------------------------------------
-def evaluate_signal(
-    closes: List[float],
-    volumes: List[int],
-    lookback: int = LOOKBACK,
-    rvol_threshold: float = RVOL_THRESHOLD,
-    price_change_band: float = PRICE_CHANGE_BAND,
-) -> Dict[str, Any]:
-    """Evaluate the geopolitical-whisper entry signal on a single window.
+def _fmt(value: Optional[float], spec: str) -> str:
+    return format(value, spec) if value is not None else "n/a"
 
-    Parameters
-    ----------
-    closes : list[float]
-        Must have exactly ``lookback + 1`` elements.  The last element is the
-        current bar; the first ``lookback`` are historical.
-    volumes : list[int]
-        Same length requirement as *closes*.
 
-    Returns
-    -------
-    dict with keys: signal (bool), rvol (float|None), pct_change (float|None),
-    vol_sma (float|None), reason (str).
-    """
-    required = lookback + 1
-    result: Dict[str, Any] = {
-        "signal": False,
-        "rvol": None,
-        "pct_change": None,
-        "vol_sma": None,
-        "reason": "",
-    }
-    if len(closes) < required or len(volumes) < required:
-        result["reason"] = "insufficient_data"
-        return result
-
-    hist_volumes = volumes[:lookback]
-    current_volume = volumes[lookback]
-
-    vol_sma = sum(hist_volumes) / len(hist_volumes) if hist_volumes else 0.0
-    result["vol_sma"] = vol_sma
-    if vol_sma <= 0:
-        result["reason"] = "zero_vol_sma"
-        return result
-
-    rvol = current_volume / vol_sma
-    result["rvol"] = rvol
-
-    price_now = closes[lookback]
-    price_ago = closes[0]
-    if price_ago <= 0:
-        result["reason"] = "zero_price_ago"
-        return result
-    pct_change = (price_now - price_ago) / price_ago
-    result["pct_change"] = pct_change
-
-    if rvol <= rvol_threshold:
-        result["reason"] = "rvol_too_low"
-        return result
-    if not (-price_change_band < pct_change < price_change_band):
-        result["reason"] = "price_moved_too_much"
-        return result
-
-    result["signal"] = True
-    result["reason"] = "signal_triggered"
-    return result
+def _fmt_pct(value: Optional[float]) -> str:
+    return f"{value * 100:.4f}%" if value is not None else "n/a"

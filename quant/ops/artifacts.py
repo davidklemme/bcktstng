@@ -70,10 +70,12 @@ class ArtifactWriter:
             "symbol_id",
             "side",
             "quantity",
+            "filled_quantity",
             "type",
             "tif",
             "limit_price",
             "state",
+            "note",
         ]
         with self.paths.orders_csv.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fields)

@@ -1,8 +1,8 @@
 {
-  "run_id": "run_1775306597_520649",
-  "timestamp": "2026-04-04T12:43:19.220070Z",
-  "git_sha": "86e33b1575f26ca7823ea1658ab626b673207bfc",
-  "params_hash": "ed577f55b0b7f1f1e9d2ef9807418c73328f2cdbc51efeb6a56b370136e1cccb",
+  "run_id": "run_1784925373_288567",
+  "timestamp": "2026-07-24T20:36:14.212613Z",
+  "git_sha": "b4c1574f747dbc6248dd3f08519ce9b217ef3154",
+  "params_hash": "2d2c374ca6593f3644c279c729321996b4a3c1163ca9bc9aba0046736a68d7a4",
   "params": {
     "strategy": "GeopoliticalWhisper",
     "start": "2024-01-02T00:00:00Z",
@@ -10,6 +10,7 @@
     "base_currency": "EUR",
     "costs_yaml_path": "quant/data/cost_profiles.yml",
     "seed": null,
-    "starting_cash": 10000.0
+    "starting_cash": 10000.0,
+    "fill_timing": "next_open"
   }
 }

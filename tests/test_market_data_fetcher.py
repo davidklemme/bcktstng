@@ -37,8 +37,13 @@ def test_get_currency_for_exchange():
     assert fetcher.get_currency_for_exchange('XHKG') == 'HKD'
 
 
+@pytest.mark.network
 def test_fetch_nasdaq_symbols():
-    """Test that fetch_nasdaq_symbols returns expected symbols."""
+    """Test that fetch_nasdaq_symbols returns expected symbols.
+
+    Hits nasdaq.com live, so it is excluded from the default run. Enable
+    with `pytest -m network`.
+    """
     fetcher = MarketDataFetcher()
     symbols = fetcher.fetch_nasdaq_symbols()
     
@@ -89,9 +94,16 @@ def test_fetch_all_markets():
 
 
 def test_save_symbols_to_csv(tmp_path):
-    """Test that save_symbols_to_csv creates a valid CSV file."""
+    """Test that save_symbols_to_csv creates a valid CSV file.
+
+    Uses fabricated symbols: this exercises serialization, not fetching, so
+    it must not depend on a live network round-trip.
+    """
     fetcher = MarketDataFetcher()
-    symbols = fetcher.fetch_nasdaq_symbols()[:5]  # Just a few symbols for testing
+    symbols = [
+        MarketSymbol(ticker=t, exchange="XNAS", currency="USD", name=f"{t} Inc.")
+        for t in ("AAPL", "MSFT", "GOOGL", "AMZN", "TSLA")
+    ]
     
     output_path = tmp_path / "test_symbols.csv"
     fetcher.save_symbols_to_csv(symbols, output_path)

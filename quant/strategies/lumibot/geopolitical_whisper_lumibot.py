@@ -1,132 +1,64 @@
-"""Geopolitical Whisper — Lumibot Strategy Implementation.
+"""Geopolitical Whisper - Lumibot adapter (for IBKR deployment).
 
-Detects institutional accumulation: a massive volume spike while price
-stays flat on 1-minute bars.  Designed for backtesting with
-``PandasDataBacktesting`` using local CSV data (Polygon / Massive) and
-for live deployment on Interactive Brokers.
+Signal logic is imported from :mod:`quant.strategies.geopolitical_whisper_signal`
+and is shared verbatim with the in-house engine adapter, so the two cannot
+drift apart.
 
-Entry
------
-* RVOL (current 1-min volume / SMA-15 of prior 15 bars' volume) > 4.0
-* Price change over the last 15 minutes is strictly between -0.5 % and +0.5 %
-* Market buy, allocating 10 % of portfolio (whole shares).
-
-Exit
-----
-* 2 % trailing stop **OR**
-* 30-minute time-based exit (whichever comes first).
-
-Costs
------
-* IBKR tiered commissions are configured via Lumibot's backtest parameters.
-* An additional 0.05 % slippage penalty is deducted from the allocation at
-  sizing time as a conservative fill assumption.
+.. warning::
+   **This adapter has not been executed end-to-end.** Lumibot could not be
+   installed in the development environment: its dependency closure includes
+   ``ibapi``, ``free-proxy`` and ``schwab`` packages that fail to build, and
+   the published wheel imports every broker module eagerly at
+   ``import lumibot``. The signal logic below is unit-tested through the
+   shared module, but ``on_trading_iteration`` itself, the ``PandasData``
+   wiring, and the lifecycle-hook names have **not** been verified against a
+   running Lumibot. Treat this file as a reviewed draft, not as tested code,
+   and run :mod:`quant.strategies.lumibot.run_backtest` against a real
+   install before relying on it.
 """
 
 from __future__ import annotations
 
 import logging
-import math
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime, time as dtime, timedelta
+from typing import Any, Dict, Optional
 
 from lumibot.strategies import Strategy
 
+from ..geopolitical_whisper_signal import (
+    ALLOCATION_FRACTION,
+    LOOKBACK,
+    PRICE_CHANGE_BAND,
+    RVOL_THRESHOLD,
+    SLIPPAGE_PENALTY_PCT,
+    TIME_EXIT_MINUTES,
+    TRAILING_STOP_PCT,
+    evaluate_signal,
+    should_exit,
+    size_position,
+)
+
 logger = logging.getLogger("geopolitical_whisper")
 
-# ---------------------------------------------------------------------------
-# Tunable constants
-# ---------------------------------------------------------------------------
-RVOL_THRESHOLD: float = 4.0
-LOOKBACK: int = 15
-PRICE_CHANGE_BAND: float = 0.005      # ± 0.5 %
-TRAILING_STOP_PCT: float = 0.02       # 2 %
-TIME_EXIT_MINUTES: int = 30
-ALLOCATION_FRACTION: float = 0.10     # 10 %
-SLIPPAGE_PENALTY_PCT: float = 0.0005  # 0.05 %
+# Flatten this many minutes before the closing bell rather than carrying a
+# position overnight when the 30-minute timer has not yet expired.
+FLATTEN_BEFORE_CLOSE_MINUTES = 5
 
 
-# ---------------------------------------------------------------------------
-# Pure-function signal evaluator (for unit testing without Lumibot runtime)
-# ---------------------------------------------------------------------------
-def evaluate_signal(
-    closes: List[float],
-    volumes: List[int],
-    lookback: int = LOOKBACK,
-    rvol_threshold: float = RVOL_THRESHOLD,
-    price_change_band: float = PRICE_CHANGE_BAND,
-) -> Dict[str, Any]:
-    """Evaluate the geopolitical-whisper entry signal on a single window.
-
-    Parameters
-    ----------
-    closes : list[float]
-        Must have exactly ``lookback + 1`` elements.  The last element is the
-        *current* (just-closed) bar; the preceding ``lookback`` are historical.
-    volumes : list[int]
-        Same length requirement as *closes*.
-
-    Returns
-    -------
-    dict with keys: signal (bool), rvol (float|None), pct_change (float|None),
-    vol_sma (float|None), reason (str).
-    """
-    required = lookback + 1
-    result: Dict[str, Any] = {
-        "signal": False,
-        "rvol": None,
-        "pct_change": None,
-        "vol_sma": None,
-        "reason": "",
-    }
-    if len(closes) < required or len(volumes) < required:
-        result["reason"] = "insufficient_data"
-        return result
-
-    # SMA over the PRIOR lookback bars (indices 0 .. lookback-1).
-    # Current bar is index ``lookback``.  This guarantees no look-ahead:
-    # we never include the current bar's volume in its own baseline.
-    hist_volumes = volumes[:lookback]
-    current_volume = volumes[lookback]
-
-    vol_sma = sum(hist_volumes) / len(hist_volumes) if hist_volumes else 0.0
-    result["vol_sma"] = vol_sma
-    if vol_sma <= 0:
-        result["reason"] = "zero_vol_sma"
-        return result
-
-    rvol = current_volume / vol_sma
-    result["rvol"] = rvol
-
-    price_now = closes[lookback]
-    price_ago = closes[0]
-    if price_ago <= 0:
-        result["reason"] = "zero_price_ago"
-        return result
-    pct_change = (price_now - price_ago) / price_ago
-    result["pct_change"] = pct_change
-
-    if rvol <= rvol_threshold:
-        result["reason"] = "rvol_too_low"
-        return result
-    if not (-price_change_band < pct_change < price_change_band):
-        result["reason"] = "price_moved_too_much"
-        return result
-
-    result["signal"] = True
-    result["reason"] = "signal_triggered"
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Lumibot Strategy
-# ---------------------------------------------------------------------------
 class GeopoliticalWhisperLumibot(Strategy):
-    """Lumibot implementation of the Geopolitical Whisper strategy."""
+    """Volume-spike-with-flat-price entry, trailing-stop / timed exit."""
 
-    # Lumibot calls ``initialize`` once before the first iteration.
     def initialize(self, parameters: dict = None) -> None:
-        params = parameters or {}
+        # Lumibot populates ``self.parameters`` from the ``parameters=`` kwarg
+        # given to ``backtest()``/the constructor, but different versions
+        # differ on whether they also pass it into ``initialize``. Merge both
+        # so configuration cannot silently fall back to defaults.
+        params: Dict[str, Any] = {}
+        params.update(getattr(self, "parameters", None) or {})
+        params.update(parameters or {})
+        self.parameters = params
+
+        self.symbol: str = params.get("symbol", "SPY")
         self.rvol_threshold: float = params.get("rvol_threshold", RVOL_THRESHOLD)
         self.lookback: int = params.get("lookback", LOOKBACK)
         self.price_change_band: float = params.get("price_change_band", PRICE_CHANGE_BAND)
@@ -134,194 +66,176 @@ class GeopoliticalWhisperLumibot(Strategy):
         self.time_exit_minutes: int = params.get("time_exit_minutes", TIME_EXIT_MINUTES)
         self.allocation_fraction: float = params.get("allocation_fraction", ALLOCATION_FRACTION)
         self.slippage_penalty_pct: float = params.get("slippage_penalty_pct", SLIPPAGE_PENALTY_PCT)
+        self.verbose: bool = params.get("verbose", False)
 
-        # Internal bookkeeping — tracks open positions for trailing stop / time exit.
-        # Key = asset symbol (str), Value = dict with entry metadata.
         self._open_trades: Dict[str, Dict[str, Any]] = {}
-
-        self.sleeptime = "1M"  # 1-minute iteration cadence
-
-        self.set_market("NYSE")
+        self.sleeptime = "1M"
+        self.set_market(params.get("market", "NYSE"))
 
         logger.info(
-            "GeopoliticalWhisperLumibot initialized — rvol>=%.1f, lookback=%d, "
-            "band=±%.2f%%, trail=%.1f%%, time_exit=%dm",
-            self.rvol_threshold,
-            self.lookback,
-            self.price_change_band * 100,
-            self.trailing_stop_pct * 100,
-            self.time_exit_minutes,
+            "GeopoliticalWhisperLumibot init - symbol=%s rvol>%.2f lookback=%d "
+            "band=+/-%.3f%% trail=%.2f%% time_exit=%dm alloc=%.1f%%",
+            self.symbol, self.rvol_threshold, self.lookback,
+            self.price_change_band * 100, self.trailing_stop_pct * 100,
+            self.time_exit_minutes, self.allocation_fraction * 100,
         )
 
-    # ------------------------------------------------------------------
-    # Main iteration (called every minute by Lumibot)
     # ------------------------------------------------------------------
     def on_trading_iteration(self) -> None:
         now: datetime = self.get_datetime()
-        symbol: str = self.parameters.get("symbol", "SPY") if hasattr(self, 'parameters') and self.parameters else "SPY"
+        symbol = self.symbol
 
-        # ------- EXIT LOGIC (always checked first) -------
-        if symbol in self._open_trades:
-            self._check_exit(symbol, now)
-            if symbol not in self._open_trades:
-                return  # position was closed
+        # Reconcile against the broker before acting: an order may have been
+        # rejected or partially filled, and trading on stale internal state
+        # would compound the error.
+        self._reconcile(symbol)
 
-        # ------- Skip entry if already holding -------
         if symbol in self._open_trades:
+            if self._near_close(now):
+                self._flatten(symbol, "EOD_FLATTEN", now)
+            else:
+                self._check_exit(symbol, now)
             return
 
-        # ------- Fetch historical bars (PIT-safe via Lumibot) -------
-        # get_historical_prices returns bars *up to but not including*
-        # the current incomplete bar.  We ask for lookback+1 completed bars.
-        required_bars = self.lookback + 1
-        bars = self.get_historical_prices(
-            symbol,
-            length=required_bars,
-            timestep="minute",
-        )
-        if bars is None or bars.df is None or len(bars.df) < required_bars:
+        # Do not open a position that the closing bell would immediately
+        # force out of at an uncontrolled price.
+        if self._near_close(now):
             return
 
-        df = bars.df  # DataFrame with columns: open, high, low, close, volume
+        required = self.lookback + 1
+        bars = self.get_historical_prices(symbol, length=required, timestep="minute")
+        df = getattr(bars, "df", None) if bars is not None else None
+        if df is None or len(df) < required:
+            return
 
         closes = df["close"].tolist()
-        volumes = [int(v) for v in df["volume"].tolist()]
+        volumes = df["volume"].tolist()
 
-        # ------- Evaluate signal (pure function — testable) -------
         sig = evaluate_signal(
-            closes,
-            volumes,
+            closes, volumes,
             lookback=self.lookback,
             rvol_threshold=self.rvol_threshold,
             price_change_band=self.price_change_band,
         )
 
-        # ------- Verbose logging -------
-        current_close = closes[-1] if closes else 0.0
-        current_vol = volumes[-1] if volumes else 0
-        logger.info(
-            "[%s] %s | close=%.4f  vol=%d  vol_sma=%s  RVOL=%s  "
-            "pct_chg=%s%%  signal=%s  reason=%s",
-            now.isoformat(),
-            symbol,
-            current_close,
-            current_vol,
-            f"{sig['vol_sma']:.1f}" if sig["vol_sma"] is not None else "N/A",
-            f"{sig['rvol']:.2f}" if sig["rvol"] is not None else "N/A",
-            f"{sig['pct_change'] * 100:.4f}" if sig["pct_change"] is not None else "N/A",
-            sig["signal"],
-            sig["reason"],
-        )
-
+        if self.verbose:
+            logger.info(
+                "[%s] %s close=%.4f vol=%s RVOL=%s pct_chg=%s signal=%s (%s)",
+                now.isoformat(), symbol, closes[-1], volumes[-1],
+                _fmt(sig["rvol"], ".2f"), _fmt_pct(sig["pct_change"]),
+                sig["signal"], sig["reason"],
+            )
         if not sig["signal"]:
             return
 
-        # ------- Position sizing (whole shares, conservative) -------
+        price = float(closes[-1])
         portfolio_value = self.get_portfolio_value()
-        if portfolio_value is None or portfolio_value <= 0:
+        if not portfolio_value or portfolio_value <= 0:
             return
-        alloc = portfolio_value * self.allocation_fraction
-        effective_price = current_close * (1.0 + self.slippage_penalty_pct)
-        if effective_price <= 0:
-            return
-        shares = int(math.floor(alloc / effective_price))
+        shares = size_position(
+            float(portfolio_value), price,
+            self.allocation_fraction, self.slippage_penalty_pct,
+        )
         if shares <= 0:
             logger.warning(
-                "[%s] %s | Signal triggered but allocation too small for 1 share "
-                "(alloc=%.2f, eff_price=%.4f)",
-                now.isoformat(),
-                symbol,
-                alloc,
-                effective_price,
+                "[%s] %s signal fired but allocation funds 0 whole shares at %.4f",
+                now.isoformat(), symbol, price,
             )
             return
 
-        # ------- Place market buy -------
-        slippage_cost = shares * current_close * self.slippage_penalty_pct
         logger.info(
-            ">>> ENTRY [%s] %s | BUY %d shares @ ~%.4f  "
-            "alloc=%.2f  slippage_cost=%.4f  RVOL=%.2f",
-            now.isoformat(),
-            symbol,
-            shares,
-            current_close,
-            alloc,
-            slippage_cost,
-            sig["rvol"],
+            ">>> ENTRY [%s] %s BUY %d @ ~%.4f RVOL=%.2f pct_chg=%s est_slippage=%.4f",
+            now.isoformat(), symbol, shares, price, sig["rvol"],
+            _fmt_pct(sig["pct_change"]), shares * price * self.slippage_penalty_pct,
         )
-
-        order = self.create_order(symbol, shares, "buy")
-        self.submit_order(order)
-
+        self.submit_order(self.create_order(symbol, shares, "buy"))
         self._open_trades[symbol] = {
             "entry_time": now,
-            "entry_price": current_close,
+            "entry_price": price,
             "quantity": shares,
-            "highest_since_entry": current_close,
+            "highest_since_entry": price,
         }
 
     # ------------------------------------------------------------------
-    # Exit logic
-    # ------------------------------------------------------------------
     def _check_exit(self, symbol: str, now: datetime) -> None:
         trade = self._open_trades[symbol]
-
         last_price = self.get_last_price(symbol)
         if last_price is None or last_price <= 0:
             return
-
-        # Update trailing high
+        last_price = float(last_price)
         trade["highest_since_entry"] = max(trade["highest_since_entry"], last_price)
 
-        # ---- Time-based exit ----
-        elapsed = now - trade["entry_time"]
-        time_exit = elapsed >= timedelta(minutes=self.time_exit_minutes)
-
-        # ---- Trailing stop ----
-        trail_price = trade["highest_since_entry"] * (1.0 - self.trailing_stop_pct)
-        trailing_stop_hit = last_price <= trail_price
-
-        if not (time_exit or trailing_stop_hit):
-            return
-
-        reason = "TIME_EXIT" if time_exit else "TRAILING_STOP"
-        slippage_cost = trade["quantity"] * last_price * self.slippage_penalty_pct
-
-        logger.info(
-            "<<< EXIT  [%s] %s | SELL %d shares @ ~%.4f  reason=%s  "
-            "entry=%.4f  high=%.4f  trail=%.4f  elapsed=%s  slippage_cost=%.4f",
-            now.isoformat(),
-            symbol,
-            trade["quantity"],
-            last_price,
-            reason,
-            trade["entry_price"],
-            trade["highest_since_entry"],
-            trail_price,
-            str(elapsed),
-            slippage_cost,
+        minutes_held = (now - trade["entry_time"]).total_seconds() / 60.0
+        decision = should_exit(
+            minutes_held=minutes_held,
+            current_price=last_price,
+            # Live quotes are point-in-time, so the last trade price is the
+            # only observable. Unlike the backtest adapter there is no
+            # intrabar low to test the stop against.
+            intrabar_low=None,
+            highest_since_entry=trade["highest_since_entry"],
+            trailing_stop_pct=self.trailing_stop_pct,
+            time_exit_minutes=self.time_exit_minutes,
         )
+        if decision["exit"]:
+            self._flatten(symbol, decision["reason"], now, price=last_price)
 
-        order = self.create_order(symbol, trade["quantity"], "sell")
-        self.submit_order(order)
-        del self._open_trades[symbol]
+    def _flatten(self, symbol: str, reason: str, now: datetime, price: Optional[float] = None) -> None:
+        trade = self._open_trades.get(symbol)
+        if trade is None:
+            return
+        px = price if price is not None else (self.get_last_price(symbol) or trade["entry_price"])
+        logger.info(
+            "<<< EXIT [%s] %s SELL %d @ ~%.4f reason=%s entry=%.4f high=%.4f "
+            "held=%.1fm gross_pnl=%.2f",
+            now.isoformat(), symbol, trade["quantity"], float(px), reason,
+            trade["entry_price"], trade["highest_since_entry"],
+            (now - trade["entry_time"]).total_seconds() / 60.0,
+            (float(px) - trade["entry_price"]) * trade["quantity"],
+        )
+        self.submit_order(self.create_order(symbol, trade["quantity"], "sell"))
+        self._open_trades.pop(symbol, None)
 
-    # ------------------------------------------------------------------
-    # End-of-day cleanup
-    # ------------------------------------------------------------------
-    def before_market_closes(self) -> None:
-        """Close any open positions before market close to avoid overnight risk
-        and to handle the case where 30 minutes haven't elapsed yet."""
-        for symbol in list(self._open_trades.keys()):
-            trade = self._open_trades[symbol]
-            last_price = self.get_last_price(symbol) or trade["entry_price"]
-            logger.info(
-                "<<< EOD FORCE EXIT [%s] %s | SELL %d shares @ ~%.4f",
-                self.get_datetime().isoformat(),
-                symbol,
-                trade["quantity"],
-                last_price,
+    def _reconcile(self, symbol: str) -> None:
+        """Clear internal state when the broker shows no matching position."""
+        if symbol not in self._open_trades:
+            return
+        try:
+            pos = self.get_position(symbol)
+        except Exception:  # broker unavailable; keep state and retry next bar
+            return
+        qty = float(getattr(pos, "quantity", 0) or 0) if pos is not None else 0.0
+        if qty <= 0:
+            logger.warning(
+                "%s tracked as open but broker reports no position; clearing state", symbol
             )
-            order = self.create_order(symbol, trade["quantity"], "sell")
-            self.submit_order(order)
-            del self._open_trades[symbol]
+            self._open_trades.pop(symbol, None)
+
+    def _near_close(self, now: datetime) -> bool:
+        """True within ``FLATTEN_BEFORE_CLOSE_MINUTES`` of the closing bell.
+
+        Uses the ``session_close`` parameter (local exchange time, default
+        16:00) so the 30-minute timer can never silently roll a position
+        overnight on a broker that does not fire ``before_market_closes``.
+        """
+        close_t = self.parameters.get("session_close", dtime(16, 0))
+        cutoff = (
+            datetime.combine(now.date(), close_t)
+            - timedelta(minutes=FLATTEN_BEFORE_CLOSE_MINUTES)
+        ).time()
+        return now.time() >= cutoff
+
+    # Belt-and-braces: Lumibot calls this before the bell on brokers that
+    # support it. The _near_close check above covers brokers that do not.
+    def before_market_closes(self) -> None:
+        now = self.get_datetime()
+        for symbol in list(self._open_trades.keys()):
+            self._flatten(symbol, "EOD_FLATTEN", now)
+
+
+def _fmt(value: Optional[float], spec: str) -> str:
+    return format(value, spec) if value is not None else "n/a"
+
+
+def _fmt_pct(value: Optional[float]) -> str:
+    return f"{value * 100:.4f}%" if value is not None else "n/a"

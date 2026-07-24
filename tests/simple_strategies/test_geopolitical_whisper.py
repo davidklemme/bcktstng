@@ -17,16 +17,15 @@ from typing import List
 
 import pytest
 
-from quant.strategies.simple.geopolitical_whisper import (
-    GeopoliticalWhisper,
-    evaluate_signal,
+from quant.strategies.geopolitical_whisper_signal import (
     LOOKBACK,
-    RVOL_THRESHOLD,
     PRICE_CHANGE_BAND,
+    RVOL_THRESHOLD,
+    evaluate_signal,
+    should_exit,
+    size_position,
 )
-from quant.strategies.lumibot.geopolitical_whisper_lumibot import (
-    evaluate_signal as evaluate_signal_lumibot,
-)
+from quant.strategies.simple.geopolitical_whisper import GeopoliticalWhisper
 from quant.orchestrator.backtest import run_backtest
 
 
@@ -204,22 +203,23 @@ class TestLookAheadBias:
         assert result["signal"] is True
 
 
-class TestLumibotSignalParity:
-    """The Lumibot ``evaluate_signal`` and the custom engine ``evaluate_signal``
-    must produce identical results for the same inputs."""
+class TestAdapterParity:
+    """Both adapters must resolve ``evaluate_signal`` to the one shared
+    implementation, so their signals cannot drift apart."""
 
-    def test_identical_results(self):
-        closes = [100.0] * (LOOKBACK + 1)
-        volumes = [1000] * LOOKBACK + [6000]
+    def test_engine_adapter_reexports_shared_signal(self):
+        from quant.strategies.simple import geopolitical_whisper as engine_adapter
 
-        r1 = evaluate_signal(closes, volumes)
-        r2 = evaluate_signal_lumibot(closes, volumes)
+        assert engine_adapter.evaluate_signal is evaluate_signal
 
-        assert r1["signal"] == r2["signal"]
-        assert r1["rvol"] == r2["rvol"]
-        assert r1["pct_change"] == r2["pct_change"]
-        assert r1["vol_sma"] == r2["vol_sma"]
-        assert r1["reason"] == r2["reason"]
+    def test_lumibot_adapter_uses_shared_signal(self):
+        # Lumibot is an optional, heavyweight dependency (it eagerly imports
+        # every broker SDK). Skip rather than fail the whole suite when it is
+        # not installed.
+        pytest.importorskip("lumibot", reason="lumibot not installed")
+        from quant.strategies.lumibot import geopolitical_whisper_lumibot as lb
+
+        assert lb.evaluate_signal is evaluate_signal
 
 
 # =====================================================================
