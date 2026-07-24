@@ -21,6 +21,7 @@ from ..strategies.simple.bollinger import BollingerBands
 from ..strategies.simple.roc import RateOfChange
 from ..strategies.simple.random_baseline import RandomBaseline
 from ..strategies.simple.index_strategy import IndexStrategy
+from ..strategies.simple.geopolitical_whisper import GeopoliticalWhisper
 from ..data.stooq_data_fetcher import StooqDataFetcher
 from ..data.fx_rate_fetcher import FxRateFetcher
 
@@ -101,6 +102,18 @@ def _strategy_factory(name: str):
                 rebalance_frequency=int(params.get("rebalance_frequency", 252)),
                 equal_weight=bool(params.get("equal_weight", True)),
                 max_positions=int(params.get("max_positions", 10)),
+            )
+        return factory
+    if lname in ("geopolitical_whisper", "gw"):
+        def factory(params: dict):
+            return GeopoliticalWhisper(
+                rvol_threshold=float(params.get("rvol_threshold", 4.0)),
+                lookback=int(params.get("lookback", 15)),
+                price_change_band=float(params.get("price_change_band", 0.005)),
+                trailing_stop_pct=float(params.get("trailing_stop_pct", 0.02)),
+                time_exit_minutes=int(params.get("time_exit_minutes", 30)),
+                allocation_fraction=float(params.get("allocation_fraction", 0.10)),
+                slippage_penalty_pct=float(params.get("slippage_penalty_pct", 0.0005)),
             )
         return factory
     raise ValueError(f"Unknown strategy: {name}")

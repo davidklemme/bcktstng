@@ -1,0 +1,16 @@
+# Optional: only needed for quant/strategies/lumibot/ (IBKR deployment path).
+#
+# Deliberately NOT in requirements.txt. Lumibot pulls a very large dependency
+# closure and eagerly imports every broker SDK at `import lumibot`, so a
+# failure in any one of them breaks the import outright. In particular
+# `ibapi`, `free-proxy` and `schwab` have no wheels on some platforms and
+# fail to build from source.
+#
+#   pip install -r requirements-lumibot.txt
+#
+# The pin is >=4.0 because the code uses `PandasDataBacktesting`, which does
+# not exist under that name in the 3.x line.
+#
+# Tests that need Lumibot use `pytest.importorskip`, so the suite stays green
+# without it.
+lumibot>=4.0,<5

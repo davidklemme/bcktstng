@@ -68,12 +68,6 @@ def make_purged_kfold_folds(
         right_start_idx = min(len(times) - 1, val_end_idx + 1 + embargo)
 
         train_ranges: List[Tuple[datetime, datetime]] = []
-        if left_end_idx >= 0 and left_end_idx >= 0 and left_end_idx >= 0 and left_end_idx >= 0:
-            if left_end_idx >= 0 and left_end_idx >= 0:
-                if left_end_idx >= 0 and val_start_idx - embargo - 1 >= 0:
-                    if val_start_idx - embargo - 1 >= 0:
-                        if (val_start_idx - embargo - 1) >= 0 and (val_start_idx - embargo - 1) >= 0:
-                            pass
         # Left training block
         left_train_end_idx = max(-1, val_start_idx - 1 - embargo)
         if left_train_end_idx >= 0:
@@ -143,7 +137,29 @@ def run_walk_forward(
     costs_yaml_path: Optional[str],
     out_dir: Path,
     base_seed: Optional[int] = None,
+    starting_cash: float = 100_000.0,
 ) -> List[Dict[str, Any]]:
+    """Evaluate one fixed parameter set across each fold's validation range.
+
+    .. warning::
+       This is **out-of-sample evaluation, not walk-forward optimisation.**
+       ``strategy_params`` is supplied by the caller and held constant; no
+       fitting happens on ``fold.train_ranges``, which are recorded in the
+       output for traceability only. Selecting the best parameters by the
+       score this produces (as :func:`quant.research.search.
+       run_hyperparameter_search` does) is therefore in-sample selection and
+       its ranking carries no out-of-sample guarantee. Implementing genuine
+       walk-forward requires fitting on ``train_ranges`` inside this loop.
+
+    ``starting_cash`` defaults to a funded account because an unfunded run
+    makes every return metric undefined, which previously collapsed every
+    fold - and hence every search trial - to an identical score of 0.0.
+    """
+    if starting_cash <= 0:
+        raise ValueError(
+            "starting_cash must be > 0; an unfunded walk-forward yields undefined "
+            "returns and makes all folds score identically"
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
     results: List[Dict[str, Any]] = []
     params_id = _hash_params(strategy_params)
@@ -153,7 +169,7 @@ def run_walk_forward(
         fold_dir.mkdir(parents=True, exist_ok=True)
         # Build strategy instance
         strategy = strategy_factory(dict(strategy_params))
-        # Run only on validation range (no training artifacts in this baseline)
+        # Evaluated on the validation range only - see the warning above.
         result = run_backtest(
             strategy=strategy,
             reader=reader,
@@ -163,6 +179,7 @@ def run_walk_forward(
             costs_yaml_path=costs_yaml_path,
             out_dir=fold_dir,
             seed=(None if base_seed is None else (base_seed + idx)),
+            starting_cash=starting_cash,
         )
         # Summarize fold
         results.append(

@@ -1,1 +1,1 @@
-ts,order_id,symbol_id,side,quantity,type,tif,limit_price,state
+ts,order_id,symbol_id,side,quantity,filled_quantity,type,tif,limit_price,state,note

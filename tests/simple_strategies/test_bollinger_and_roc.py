@@ -2,35 +2,13 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from quant.data.bars_loader import load_daily_bars_csv
-from quant.data.pit_reader import PITDataReader, BarsStore
-from quant.data.symbols_repository import create_sqlite_engine, load_symbols_csv_to_db
-from quant.data.fx_repository import create_engine as create_fx_engine, load_fx_csv_to_db
 from quant.orchestrator.backtest import run_backtest
 from quant.strategies.simple.bollinger import BollingerBands
 from quant.strategies.simple.roc import RateOfChange
 
-DATA_DIR = Path("quant/data/dummy")
 
-
-def _prepare_reader_and_store():
-    rows, validation = load_daily_bars_csv(str(DATA_DIR / "daily_bars.csv"), "XNYS")
-    assert not validation.missing_dates  # our dummy data has continuous sessions for used range
-    store = BarsStore.from_rows(rows)
-
-    symbols_engine = create_sqlite_engine(":memory:")
-    fx_engine = create_fx_engine(":memory:")
-
-    # Load symbols and fx
-    load_symbols_csv_to_db(str(DATA_DIR / "symbols.csv"), symbols_engine)
-    load_fx_csv_to_db(str(DATA_DIR / "fx.csv"), fx_engine)
-
-    reader = PITDataReader(fx_engine, symbols_engine, store)
-    return reader, store
-
-
-def test_bollinger_backtest_smoke(capsys):
-    reader, store = _prepare_reader_and_store()
+def test_bollinger_backtest_smoke(daily_reader_and_store, capsys):
+    reader, store = daily_reader_and_store
 
     start = datetime.fromisoformat("2024-01-03")
     end = datetime.fromisoformat("2024-02-29")
@@ -44,6 +22,9 @@ def test_bollinger_backtest_smoke(capsys):
         start=start,
         end=end,
         base_currency="EUR",
+        # Must be funded: an unfunded run buys on implicit unlimited credit and
+        # leaves every return metric undefined.
+        starting_cash=100_000.0,
         costs_yaml_path=str(Path("quant/data/cost_profiles.yml")),
         out_dir=Path("runs/tests/bollinger"),
     )
@@ -55,15 +36,17 @@ def test_bollinger_backtest_smoke(capsys):
 
     # Basic assertions to ensure viability
     assert len(result.equity) > 0
-    assert isinstance(result.metrics.get("return"), float)
-    
+    assert isinstance(result.metrics.get("total_return"), float)
+    assert result.metrics["initial_capital"] == 100_000.0
+    assert result.metrics["max_drawdown"] <= 0.0
+
     # Check that the strategy processed multiple symbols
     print("Bollinger available symbols:", len(strat.available_symbols))
     assert len(strat.available_symbols) == 3  # AAPL, MSFT, GOOGL
 
 
-def test_roc_backtest_smoke(capsys):
-    reader, store = _prepare_reader_and_store()
+def test_roc_backtest_smoke(daily_reader_and_store, capsys):
+    reader, store = daily_reader_and_store
 
     start = datetime.fromisoformat("2024-01-03")
     end = datetime.fromisoformat("2024-02-29")
@@ -77,6 +60,9 @@ def test_roc_backtest_smoke(capsys):
         start=start,
         end=end,
         base_currency="EUR",
+        # Must be funded: an unfunded run buys on implicit unlimited credit and
+        # leaves every return metric undefined.
+        starting_cash=100_000.0,
         costs_yaml_path=str(Path("quant/data/cost_profiles.yml")),
         out_dir=Path("runs/tests/roc"),
     )
@@ -86,8 +72,10 @@ def test_roc_backtest_smoke(capsys):
     print("ROC orders:", len(result.orders))
 
     assert len(result.equity) > 0
-    assert isinstance(result.metrics.get("return"), float)
-    
+    assert isinstance(result.metrics.get("total_return"), float)
+    assert result.metrics["initial_capital"] == 100_000.0
+    assert result.metrics["max_drawdown"] <= 0.0
+
     # Check that the strategy processed multiple symbols
     print("ROC available symbols:", len(strat.available_symbols))
     assert len(strat.available_symbols) == 3  # AAPL, MSFT, GOOGL

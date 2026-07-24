@@ -85,13 +85,9 @@ def load_fx_csv_to_db(csv_path: str, engine: Engine) -> int:
     return len(rows)
 
 
-def get_rate_asof(engine: Engine, base_ccy: str, quote_ccy: str, asof: datetime) -> FxRate:
-    ensure_schema(engine)
-
+def _lookup_direct(engine: Engine, base_ccy: str, quote_ccy: str, asof_utc: datetime):
     metadata = MetaData()
     table = define_fx_table(metadata)
-
-    asof_utc = _utc_dt(asof)
     stmt = (
         select(table.c.ts, table.c.base_ccy, table.c.quote_ccy, table.c.rate)
         .where(and_(table.c.base_ccy == base_ccy, table.c.quote_ccy == quote_ccy))
@@ -99,14 +95,41 @@ def get_rate_asof(engine: Engine, base_ccy: str, quote_ccy: str, asof: datetime)
         .order_by(table.c.ts.desc())
         .limit(1)
     )
-
     with engine.begin() as conn:
-        row = conn.execute(stmt).fetchone()
+        return conn.execute(stmt).fetchone()
 
-    if row is None:
-        raise LookupError(f"No FX rate for {base_ccy}/{quote_ccy} as of {asof_utc.isoformat()}")
 
-    return FxRate(ts=_utc_dt(row.ts), base_ccy=row.base_ccy, quote_ccy=row.quote_ccy, rate=float(row.rate))
+def get_rate_asof(engine: Engine, base_ccy: str, quote_ccy: str, asof: datetime) -> FxRate:
+    """Latest rate at or before *asof*.
+
+    Currency codes are normalised to upper case, the identity pair returns
+    1.0, and the inverse pair is derived when only one direction is stored -
+    previously ``EUR/USD`` raised ``LookupError`` whenever only ``USD/EUR``
+    had been loaded.
+    """
+    ensure_schema(engine)
+
+    base_ccy = (base_ccy or "").upper()
+    quote_ccy = (quote_ccy or "").upper()
+    asof_utc = _utc_dt(asof)
+
+    if base_ccy == quote_ccy:
+        return FxRate(ts=asof_utc, base_ccy=base_ccy, quote_ccy=quote_ccy, rate=1.0)
+
+    row = _lookup_direct(engine, base_ccy, quote_ccy, asof_utc)
+    if row is not None:
+        return FxRate(ts=_utc_dt(row.ts), base_ccy=row.base_ccy, quote_ccy=row.quote_ccy, rate=float(row.rate))
+
+    inverse = _lookup_direct(engine, quote_ccy, base_ccy, asof_utc)
+    if inverse is not None and float(inverse.rate) != 0.0:
+        return FxRate(
+            ts=_utc_dt(inverse.ts),
+            base_ccy=base_ccy,
+            quote_ccy=quote_ccy,
+            rate=1.0 / float(inverse.rate),
+        )
+
+    raise LookupError(f"No FX rate for {base_ccy}/{quote_ccy} as of {asof_utc.isoformat()}")
 
 
 def create_engine(path: str = ":memory:") -> Engine:

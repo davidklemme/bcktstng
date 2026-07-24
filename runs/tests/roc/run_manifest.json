@@ -1,8 +1,8 @@
 {
-  "run_id": "run_1755107389_891679",
-  "timestamp": "2025-08-13T17:49:49.559090Z",
-  "git_sha": "0eb094f76f0337ed1009ec9292030bafcbe3790b",
-  "params_hash": "6cc441b48e9a05fe05a9858667038a4cf0551383e12142c89d2f0f79a56e47f4",
+  "run_id": "run_1784925373_367442",
+  "timestamp": "2026-07-24T20:36:13.422946Z",
+  "git_sha": "b4c1574f747dbc6248dd3f08519ce9b217ef3154",
+  "params_hash": "272c93853531182e6056789c5781abc31c3831338bdfaabbf7f4930855daed2a",
   "params": {
     "strategy": "RateOfChange",
     "start": "2024-01-03T00:00:00Z",
@@ -10,6 +10,7 @@
     "base_currency": "EUR",
     "costs_yaml_path": "quant/data/cost_profiles.yml",
     "seed": null,
-    "starting_cash": 0.0
+    "starting_cash": 100000.0,
+    "fill_timing": "next_open"
   }
 }

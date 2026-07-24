@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from quant.engine.orders import Order, OrderSide, OrderType, TimeInForce
 from quant.engine.execution import ExecutionSimulator, Quote
 from quant.data.costs import load_calculator_from_yaml
@@ -42,8 +44,28 @@ def test_execution_within_spread_and_adv_partial(tmp_path):
 
     assert sum(f.quantity for f in fills) <= 1000
     for f in fills:
-        assert 99.0 <= f.price <= 101.0
+        # An aggressive market buy pays through the offer: urgency (0.75 of the
+        # spread above mid) plus impact. Requiring it to land inside [bid, ask]
+        # is what made the impact term unobservable at any order size.
+        assert f.price > quote.ask
+        assert f.price == pytest.approx(101.5, abs=0.01)
     assert cost >= 0.0
+
+
+def test_market_impact_scales_with_order_size():
+    """Impact must actually move the fill; previously the [bid, ask] clamp
+    made fill price identical for 10 shares and for 1 billion."""
+    sim = ExecutionSimulator(adv_by_symbol={1: 1_000}, adv_cap_fraction=1.0,
+                             impact_alpha=0.5, sigma_by_symbol={1: 1.0})
+    quote = Quote(bid=99.975, ask=100.025)
+
+    def buy(qty: int) -> float:
+        o = Order(id=f"o{qty}", symbol_id=1, side=OrderSide.BUY, quantity=qty,
+                  type=OrderType.MARKET, tif=TimeInForce.DAY)
+        return sim.simulate(o, quote, venue="US", available_liquidity=qty)[0][0].price
+
+    small, large = buy(10), buy(1_000_000)
+    assert large > small, f"impact is inert: {small} vs {large}"
 
 
 def test_market_impact_direction():
@@ -73,15 +95,19 @@ def test_time_of_day_spread_multiplier_open_close_mid():
     order_buy = Order(id="b1", symbol_id=1, side=OrderSide.BUY, quantity=100, type=OrderType.MARKET, tif=TimeInForce.DAY)
     fills_open, _ = sim.simulate(order_buy, quote, venue="US", available_liquidity=10000, ts=ts_open)
 
-    # Mid=100.1; urgency 0.75; effective spread=0.2*2.0=0.4; target = 100.1 + 0.75*0.4 = 100.4 -> clamped to ask=100.2
-    assert fills_open[0].price <= quote.ask and fills_open[0].price >= quote.mid
+    # Mid=100.1; urgency 0.75; effective spread=0.2*2.0=0.4; target=100.1+0.75*0.4=100.4.
+    # A market order trades THROUGH the touch when the spread widens - clamping
+    # it back to the ask (the old behaviour) made these multipliers inert.
+    assert fills_open[0].price == pytest.approx(100.4)
+    assert fills_open[0].price > quote.ask
 
     # Mid-session (e.g., 18:00 UTC ~ 14:00 local). Expect less aggressive than open
     ts_mid = datetime(2024, 6, 3, 18, 0, tzinfo=timezone.utc)
     order_buy2 = Order(id="b2", symbol_id=1, side=OrderSide.BUY, quantity=100, type=OrderType.MARKET, tif=TimeInForce.DAY)
     fills_mid, _ = sim.simulate(order_buy2, quote, venue="US", available_liquidity=10000, ts=ts_mid)
-    # With mid multiplier 1.0: effective price at 100.1+0.75*0.2=100.25 -> clamped to 100.2
-    assert fills_mid[0].price <= fills_open[0].price
+    # Multiplier 1.0: 100.1 + 0.75*0.2 = 100.25, strictly cheaper than the open.
+    assert fills_mid[0].price == pytest.approx(100.25)
+    assert fills_mid[0].price < fills_open[0].price
 
     # Close bucket ~ 20:30 UTC (16:30 local close -> still in close bucket minute)
     ts_close = datetime(2024, 6, 3, 20, 30, tzinfo=timezone.utc)
